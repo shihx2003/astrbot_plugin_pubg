@@ -6,3 +6,9 @@ version: "0.5.3"
 author: "shihx"
 repo: "https://github.com/shihx2003/astrbot_plugin_pubg"
 astrbot_version: ">=4.10.4"
+tags:
+  - pubg
+  - 游戏
+  - 战绩
+  - 回放
+  - 娱乐
