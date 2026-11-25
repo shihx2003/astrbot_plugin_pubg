@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from collections import deque
 from typing import Any
 from urllib.parse import quote
 
 import aiohttp
-
-logger = logging.getLogger(__name__)
+from astrbot.api import logger
 
 PUBG_API_BASE_URL = "https://api.pubg.com"
 MAX_REQUESTS_PER_MINUTE = 10

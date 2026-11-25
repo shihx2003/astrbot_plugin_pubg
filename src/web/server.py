@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 import time
 from collections.abc import Awaitable, Callable
 
 from aiohttp import web
+from astrbot.api import logger
 
 from ..core.service import SquadLensService
 from .routes import get_client_ip, is_authorized, register_routes
-
-logger = logging.getLogger(__name__)
 
 PUBLIC_API_PATHS = frozenset({"/api/health", "/api/auth/status", "/api/auth/verify"})
 

@@ -9,7 +9,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.10.4-F5C518)
 ![Web](https://img.shields.io/badge/Frontend-Zero--Build%20HTML5%20%2B%20Three.js-2EA8FF)
-![Version](https://img.shields.io/badge/Version-v0.5.6-3CD070)
+![Version](https://img.shields.io/badge/Version-v0.5.7-3CD070)
 
 </div>
 

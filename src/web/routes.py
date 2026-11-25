@@ -8,18 +8,16 @@ import gzip
 import hmac
 import io
 import json
-import logging
 import mimetypes
 import zipfile
 from pathlib import Path
 from typing import Any
 
 from aiohttp import web
+from astrbot.api import logger
 
 from ..core.pubg_client import PubgApiError
 from ..core.service import SquadLensService
-
-logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 ACCESS_COOKIE_NAME = "squadlens_access_code"
@@ -249,7 +247,7 @@ def register_routes(
     async def health_handler(request: web.Request) -> web.Response:
         return _gzip_json_response(
             request,
-            {"ok": True, "service": "SquadLens", "version": "0.5.6"},
+            {"ok": True, "service": "SquadLens", "version": "0.5.7"},
         )
 
     async def auth_status_handler(request: web.Request) -> web.Response:

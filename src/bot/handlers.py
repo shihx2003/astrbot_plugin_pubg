@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from collections.abc import Awaitable, Callable
+
+from astrbot.api import logger
 
 from ..core.models import MatchSummary
 from ..core.service import SquadLensService
 from ..core.storage import SquadStorage
 from .formatter import format_match_detail
-
-logger = logging.getLogger(__name__)
 
 BOUND_SESSIONS_KEY = "bound_broadcast_sessions"
 

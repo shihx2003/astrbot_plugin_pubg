@@ -1,5 +1,10 @@
 # 更新日志
 
+## [0.5.7] - 2026-11-25
+
+### Fixed
+- **严格遵循 AstrBot 插件市场日志规范**：全项目彻底移除 Python 标准库 `logging`（`logging.getLogger(__name__)`），将 `src/core/pubg_client.py`、`src/core/service.py`、`src/core/storage.py`、`src/bot/handlers.py`、`src/web/routes.py`、`src/web/server.py` 全部统一改为 `from astrbot.api import logger`。
+
 ## [0.5.6] - 2026-11-25
 
 ### Added

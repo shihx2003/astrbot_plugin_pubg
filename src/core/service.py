@@ -5,16 +5,15 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
-import logging
 from collections import defaultdict
 from typing import Any
+
+from astrbot.api import logger
 
 from .models import MatchSummary, SquadMember, slot_color
 from .pubg_client import PubgApiClient, PubgApiError
 from .storage import SquadStorage
 from .telemetry import REPLAY_SCHEMA_VERSION, parse_match_response, parse_telemetry_to_replay_gzip
-
-logger = logging.getLogger(__name__)
 
 
 class SquadLensService:
