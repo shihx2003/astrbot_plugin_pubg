@@ -221,14 +221,25 @@ class SquadLensService:
                     return cached_gz
                 raise PubgApiError(f"对局 {match_id} 不包含官方 Telemetry 回放数据。", 404)
 
-            raw_bytes = await self.client.download_telemetry_bytes(summary.telemetry_url)
-            replay_dict, gz_bytes = await parse_telemetry_to_replay_gzip(
-                raw_bytes,
-                summary,
-                self.squad_members,
-                sample_interval_sec=self.sample_interval_sec,
-            )
-            del raw_bytes
+            try:
+                raw_bytes = await self.client.download_telemetry_bytes(summary.telemetry_url)
+                replay_dict, gz_bytes = await parse_telemetry_to_replay_gzip(
+                    raw_bytes,
+                    summary,
+                    self.squad_members,
+                    sample_interval_sec=self.sample_interval_sec,
+                )
+                del raw_bytes
+            except Exception as exc:
+                if cached_gz is not None:
+                    logger.warning(
+                        "Failed to upgrade cached replay %s to v%d (%s); serving existing cached archive.",
+                        match_id,
+                        REPLAY_SCHEMA_VERSION,
+                        exc,
+                    )
+                    return cached_gz
+                raise
             await self.storage.save_replay_gzip(match_id, gz_bytes)
 
             # Enrich match summary with telemetry team-damage metrics if present

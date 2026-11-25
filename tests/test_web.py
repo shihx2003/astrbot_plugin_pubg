@@ -16,6 +16,7 @@ from src.core.models import MatchSummary, SquadMember
 from src.core.pubg_client import PubgApiClient
 from src.core.service import SquadLensService
 from src.core.storage import SquadStorage
+from src.core.telemetry import REPLAY_SCHEMA_VERSION
 from src.web.server import SquadWebServer, create_web_app
 
 
@@ -43,7 +44,7 @@ async def _build_service(tmp_path: Path) -> SquadLensService:
     )
     await storage.save_match(summary, ["acc.1"])
     replay_payload = {
-        "version": 4,
+        "version": REPLAY_SCHEMA_VERSION,
         "match_id": "match-web-1",
         "map_image": "static/maps/erangel.webp",
         "terrain_image": "static/maps/terrain/erangel.webp",

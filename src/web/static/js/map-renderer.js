@@ -9,11 +9,152 @@
  * - Mouse drag/wheel zoom & Mobile single-finger pan + two-finger pinch zoom
  */
 
-const MAP_ASSET_VER = "0.5.5";
+const MAP_ASSET_VER = "0.5.6";
 
 function withMapVer(url) {
   if (!url) return "";
   return url.includes("?") ? `${url}&v=${MAP_ASSET_VER}` : `${url}?v=${MAP_ASSET_VER}`;
+}
+
+/**
+ * Extend a directed flight path segment (p1 -> p2) cleanly to map borders [0, sizeCm]^2.
+ */
+export function extendPlaneToMapBounds(p1, p2, sizeCm = 816000) {
+  const x1 = Number(p1?.[0] || 0);
+  const y1 = Number(p1?.[1] || 0);
+  const x2 = Number(p2?.[0] || 0);
+  const y2 = Number(p2?.[1] || 0);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  if (Math.hypot(dx, dy) < 1e-3) return [[x1, y1], [x2, y2]];
+
+  const ts = [];
+  if (Math.abs(dx) > 1e-6) {
+    for (const bx of [0, sizeCm]) {
+      const t = (bx - x1) / dx;
+      const y = y1 + dy * t;
+      if (y >= -1 && y <= sizeCm + 1) ts.push(t);
+    }
+  }
+  if (Math.abs(dy) > 1e-6) {
+    for (const by of [0, sizeCm]) {
+      const t = (by - y1) / dy;
+      const x = x1 + dx * t;
+      if (x >= -1 && x <= sizeCm + 1) ts.push(t);
+    }
+  }
+  if (ts.length < 2) return [[x1, y1], [x2, y2]];
+  const tMin = Math.min(...ts);
+  const tMax = Math.max(...ts);
+  if (tMax - tMin < 1e-4) return [[x1, y1], [x2, y2]];
+  const clamp = (v) => Math.max(0, Math.min(sizeCm, v));
+  return [
+    [clamp(x1 + dx * tMin), clamp(y1 + dy * tMin)],
+    [clamp(x1 + dx * tMax), clamp(y1 + dy * tMax)],
+  ];
+}
+
+function drawPlaneIcon2D(ctx, x, y, angle, size, isLightTerrain) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  // Sleek transport aircraft silhouette pointing along +X
+  ctx.moveTo(size * 0.95, 0);
+  ctx.lineTo(size * 0.25, -size * 0.16);
+  ctx.lineTo(-size * 0.12, -size * 0.95);
+  ctx.lineTo(-size * 0.36, -size * 0.95);
+  ctx.lineTo(-size * 0.15, -size * 0.18);
+  ctx.lineTo(-size * 0.68, -size * 0.14);
+  ctx.lineTo(-size * 0.92, -size * 0.48);
+  ctx.lineTo(-size * 1.02, -size * 0.48);
+  ctx.lineTo(-size * 0.88, 0);
+  ctx.lineTo(-size * 1.02, size * 0.48);
+  ctx.lineTo(-size * 0.92, size * 0.48);
+  ctx.lineTo(-size * 0.68, size * 0.14);
+  ctx.lineTo(-size * 0.15, size * 0.18);
+  ctx.lineTo(-size * 0.36, size * 0.95);
+  ctx.lineTo(-size * 0.12, size * 0.95);
+  ctx.lineTo(size * 0.25, size * 0.16);
+  ctx.closePath();
+  ctx.fillStyle = isLightTerrain ? "#0f172a" : "#fff8dc";
+  ctx.strokeStyle = isLightTerrain ? "rgba(255, 255, 255, 0.92)" : "rgba(7, 11, 19, 0.92)";
+  ctx.lineWidth = 1.8;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCarePackage2D(ctx, x, y, cp, currentTime, scale) {
+  const isFalling = cp.land_t == null || currentTime < cp.land_t;
+  const ageAfterLand = cp.land_t != null ? currentTime - cp.land_t : -1;
+  ctx.save();
+  ctx.translate(x, y);
+
+  if (isFalling) {
+    // Pulsing drop target ring + parachute canopy
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.008);
+    ctx.beginPath();
+    ctx.arc(0, 0, 10 + pulse * 5, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(248, 113, 113, ${0.85 - pulse * 0.4})`;
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    // Mini parachute canopy above crate
+    ctx.beginPath();
+    ctx.arc(0, -10, 6.5, Math.PI, 0);
+    ctx.fillStyle = "rgba(255, 247, 237, 0.95)";
+    ctx.strokeStyle = "#0b0f17";
+    ctx.lineWidth = 1.2;
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-5.5, -10);
+    ctx.lineTo(-2.5, -3);
+    ctx.moveTo(5.5, -10);
+    ctx.lineTo(2.5, -3);
+    ctx.strokeStyle = "rgba(226, 232, 240, 0.85)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  } else if (ageAfterLand >= 0 && ageAfterLand <= 90) {
+    // Subtle red smoke halo for freshly landed care packages
+    const fade = Math.max(0.15, 1 - ageAfterLand / 90);
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.006);
+    ctx.beginPath();
+    ctx.arc(0, 0, 9 + pulse * 4, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(239, 68, 68, ${(0.22 * fade).toFixed(3)})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(239, 68, 68, ${(0.65 * fade).toFixed(3)})`;
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+  }
+
+  // Iconic PUBG red-top / blue-base airdrop crate
+  const sz = scale >= 2.2 ? 12 : 10;
+  const hs = sz * 0.5;
+  ctx.fillStyle = "#1d4ed8";
+  ctx.fillRect(-hs, -hs, sz, sz);
+  ctx.fillStyle = "#ef4444";
+  ctx.fillRect(-hs, -hs, sz, sz * 0.48);
+  ctx.fillStyle = "#facc15";
+  ctx.fillRect(-hs, -0.8, sz, 1.6);
+  ctx.strokeStyle = "#0b0f17";
+  ctx.lineWidth = 1.8;
+  ctx.strokeRect(-hs, -hs, sz, sz);
+
+  // Compact highlight loot label when zoomed in
+  if (!isFalling && scale >= 1.65 && Array.isArray(cp.items) && cp.items.length > 0) {
+    const lbl = cp.items.slice(0, 2).join("·");
+    ctx.font = "700 10px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const tw = ctx.measureText(lbl).width + 8;
+    ctx.fillStyle = "rgba(11, 15, 23, 0.84)";
+    ctx.fillRect(-tw / 2, hs + 3, tw, 14);
+    ctx.fillStyle = "#fde68a";
+    ctx.fillText(lbl, 0, hs + 5);
+  }
+  ctx.restore();
 }
 
 const PUBG_SLOT_COLORS = {
@@ -313,7 +454,7 @@ export class MapRenderer {
   }
 
   render(state) {
-    const { currentTime, trackedIds, followId, flashEvent } = state;
+    const { currentTime, trackedIds, followId, flashEvent, showPlane = true, showAirdrops = true } = state;
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.width, this.height);
 
@@ -361,19 +502,75 @@ export class MapRenderer {
     const isLightTerrain = this.mapLayer === "terrain" && this.terrainLoaded;
     const lod = get2DZoomLod(this.scale);
 
-    // 2. Plane flight path
-    if (this.replay.plane && this.replay.plane.length === 2) {
-      const p1 = this.worldToScreen(this.replay.plane[0][0], this.replay.plane[0][1]);
-      const p2 = this.worldToScreen(this.replay.plane[1][0], this.replay.plane[1][1]);
-      ctx.save();
-      ctx.strokeStyle = isLightTerrain ? "rgba(15, 23, 42, 0.55)" : "rgba(255, 255, 255, 0.5)";
-      ctx.lineWidth = 1.6;
-      ctx.setLineDash([8, 6]);
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.stroke();
-      ctx.restore();
+    // 2. Plane flight path (toggleable, extended edge-to-edge with directional chevrons & plane icon)
+    if (showPlane && this.replay.plane && this.replay.plane.length === 2) {
+      const [wStart, wEnd] = extendPlaneToMapBounds(this.replay.plane[0], this.replay.plane[1], sizeCm);
+      const p1 = this.worldToScreen(wStart[0], wStart[1]);
+      const p2 = this.worldToScreen(wEnd[0], wEnd[1]);
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const distPx = Math.hypot(dx, dy);
+      if (distPx > 6) {
+        const angle = Math.atan2(dy, dx);
+        ctx.save();
+        ctx.lineCap = "round";
+        ctx.setLineDash([10, 7]);
+        // Dark halo beneath dashed line for crisp contrast on any map brightness
+        ctx.strokeStyle = isLightTerrain ? "rgba(255, 255, 255, 0.65)" : "rgba(7, 11, 19, 0.8)";
+        ctx.lineWidth = 3.8;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+
+        ctx.strokeStyle = isLightTerrain ? "rgba(15, 23, 42, 0.82)" : "rgba(255, 248, 220, 0.86)";
+        ctx.lineWidth = 1.9;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+
+        // Directional chevrons along flight route
+        ctx.setLineDash([]);
+        const ux = dx / distPx;
+        const uy = dy / distPx;
+        const stepPx = Math.max(90, Math.min(180, distPx / 5));
+        for (let d = stepPx * 0.6; d < distPx - 28; d += stepPx) {
+          const cx = p1.x + ux * d;
+          const cy = p1.y + uy * d;
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(angle);
+          ctx.beginPath();
+          ctx.moveTo(-4.5, -4.5);
+          ctx.lineTo(3.5, 0);
+          ctx.lineTo(-4.5, 4.5);
+          ctx.strokeStyle = isLightTerrain ? "rgba(255, 255, 255, 0.78)" : "rgba(7, 11, 19, 0.86)";
+          ctx.lineWidth = 3.4;
+          ctx.stroke();
+          ctx.strokeStyle = isLightTerrain ? "#0f172a" : "#fde68a";
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Animated transport airplane icon during opening flight (or docked near entry/exit arrow)
+        const pf = this.replay.plane_flight;
+        let iconPt = null;
+        if (Array.isArray(pf) && pf.length === 6 && pf[3] > pf[0] && currentTime <= pf[3] + 15) {
+          const f = Math.max(0, Math.min(1.15, (currentTime - pf[0]) / (pf[3] - pf[0])));
+          const wx = pf[1] + (pf[4] - pf[1]) * f;
+          const wy = pf[2] + (pf[5] - pf[2]) * f;
+          iconPt = this.worldToScreen(wx, wy);
+        } else {
+          // Subtle directional plane marker near 14% along route so origin & heading are always obvious
+          iconPt = { x: p1.x + ux * Math.min(48, distPx * 0.14), y: p1.y + uy * Math.min(48, distPx * 0.14) };
+        }
+        if (iconPt) {
+          drawPlaneIcon2D(ctx, iconPt.x, iconPt.y, angle, 9.5, isLightTerrain);
+        }
+        ctx.restore();
+      }
     }
 
     // 3. Safe zone (white / dark-slate on light terrain) & Bluezone (blue)
@@ -401,6 +598,15 @@ export class MapRenderer {
         ctx.arc(sc.x, sc.y, sRad, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
+      }
+    }
+
+    // 3.5 Care packages / Airdrops (toggleable)
+    if (showAirdrops && Array.isArray(this.replay.care_packages) && this.replay.care_packages.length > 0) {
+      for (const cp of this.replay.care_packages) {
+        if (currentTime < (cp.spawn_t ?? 0)) continue;
+        const sc = this.worldToScreen(cp.x, cp.y);
+        drawCarePackage2D(ctx, sc.x, sc.y, cp, currentTime, this.scale);
       }
     }
 

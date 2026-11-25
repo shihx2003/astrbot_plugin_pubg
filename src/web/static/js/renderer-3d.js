@@ -13,13 +13,13 @@
 import * as THREE from "../vendor/three/three.module.min.js";
 import { OrbitControls } from "../vendor/three/OrbitControls.js";
 import { GLTFLoader } from "../vendor/three/GLTFLoader.js";
-import { getPlayerVisualColor, interpolateTrack } from "./map-renderer.js";
+import { extendPlaneToMapBounds, getPlayerVisualColor, interpolateTrack } from "./map-renderer.js";
 
 const WORLD_SIZE = 800; // Maps 816,000 cm -> 800 Three.js units (1 unit = 10.2m)
 const TERRAIN_SEGMENTS = 320;
 const TERRAIN_MAX_HEIGHT = 46; // Visual elevation scale in Three.js units (clear dramatic hills)
 const SEA_LEVEL_Y = 3.2;
-const ASSET_VER = "0.5.5";
+const ASSET_VER = "0.5.6";
 
 function withAssetVer(url) {
   if (!url) return "";
@@ -202,6 +202,127 @@ function makeBadgeTexture(text, bgColor, highlight) {
   return tex;
 }
 
+function makePlaneArrowTexture(isAirplane = false) {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, 128, 128);
+  ctx.translate(64, 64);
+  if (isAirplane) {
+    // Sleek transport aircraft silhouette pointing +X
+    const s = 46;
+    ctx.beginPath();
+    ctx.moveTo(s * 0.95, 0);
+    ctx.lineTo(s * 0.25, -s * 0.16);
+    ctx.lineTo(-s * 0.12, -s * 0.95);
+    ctx.lineTo(-s * 0.36, -s * 0.95);
+    ctx.lineTo(-s * 0.15, -s * 0.18);
+    ctx.lineTo(-s * 0.68, -s * 0.14);
+    ctx.lineTo(-s * 0.92, -s * 0.48);
+    ctx.lineTo(-s * 1.02, -s * 0.48);
+    ctx.lineTo(-s * 0.88, 0);
+    ctx.lineTo(-s * 1.02, s * 0.48);
+    ctx.lineTo(-s * 0.92, s * 0.48);
+    ctx.lineTo(-s * 0.68, s * 0.14);
+    ctx.lineTo(-s * 0.15, s * 0.18);
+    ctx.lineTo(-s * 0.36, s * 0.95);
+    ctx.lineTo(-s * 0.12, s * 0.95);
+    ctx.lineTo(s * 0.25, s * 0.16);
+    ctx.closePath();
+    ctx.fillStyle = "#fff8dc";
+    ctx.strokeStyle = "rgba(7, 11, 19, 0.95)";
+    ctx.lineWidth = 7;
+    ctx.stroke();
+    ctx.fill();
+  } else {
+    // Bold directional chevron pointing +X
+    ctx.beginPath();
+    ctx.moveTo(-22, -32);
+    ctx.lineTo(26, 0);
+    ctx.lineTo(-22, 32);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(7, 11, 19, 0.94)";
+    ctx.lineWidth = 18;
+    ctx.stroke();
+    ctx.strokeStyle = "#fde68a";
+    ctx.lineWidth = 10;
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
+}
+
+function makeAirdropTexture(isFalling) {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, 128, 128);
+
+  if (isFalling) {
+    // Parachute canopy on top + hanging crate below
+    ctx.beginPath();
+    ctx.arc(64, 46, 36, Math.PI, 0);
+    ctx.fillStyle = "#fff7ed";
+    ctx.strokeStyle = "#0b0f17";
+    ctx.lineWidth = 5;
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(32, 46);
+    ctx.lineTo(50, 74);
+    ctx.moveTo(96, 46);
+    ctx.lineTo(78, 74);
+    ctx.moveTo(64, 46);
+    ctx.lineTo(64, 74);
+    ctx.strokeStyle = "rgba(226, 232, 240, 0.92)";
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+
+    // Crate at bottom
+    ctx.fillStyle = "#1d4ed8";
+    ctx.fillRect(42, 74, 44, 42);
+    ctx.fillStyle = "#ef4444";
+    ctx.fillRect(42, 74, 44, 20);
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(42, 92, 44, 6);
+    ctx.strokeStyle = "#0b0f17";
+    ctx.lineWidth = 5;
+    ctx.strokeRect(42, 74, 44, 42);
+  } else {
+    // Crisp circular dark halo + iconic PUBG red-top / blue-base airdrop crate
+    ctx.beginPath();
+    ctx.arc(64, 64, 54, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(239, 68, 68, 0.24)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(248, 113, 113, 0.85)";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    ctx.fillStyle = "#1d4ed8";
+    ctx.fillRect(32, 32, 64, 64);
+    ctx.fillStyle = "#ef4444";
+    ctx.fillRect(32, 32, 64, 30);
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(32, 59, 64, 7);
+    ctx.strokeStyle = "#0b0f17";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(32, 32, 64, 64);
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
+}
+
 /**
  * 3-stage adaptive screen-pixel diameter for 3D player icons:
  * - Far overview (d >= 360): keep readable minimum pixels so players never vanish when zoomed out
@@ -297,23 +418,41 @@ export class Erangel3DRenderer {
     this.buildingsGroup = null;
     this.safeWall = null;
     this.blueWall = null;
+    this.planeGroup = new THREE.Group();
+    this.planeIconMesh = null;
+    this.planeRibbonMesh = null;
+    this.airdropsGroup = new THREE.Group();
     this.trailsGroup = new THREE.Group();
     this.playersGroup = new THREE.Group();
     this.combatGroup = new THREE.Group();
-    this.scene.add(this.trailsGroup, this.playersGroup, this.combatGroup);
+    this.scene.add(this.planeGroup, this.airdropsGroup, this.trailsGroup, this.playersGroup, this.combatGroup);
 
     this._texLoader = new THREE.TextureLoader();
     this._dashTex = createDashedTrailTexture();
+    this._planeTex = makePlaneArrowTexture(true);
+    this._chevronTex = makePlaneArrowTexture(false);
+    this._airdropLandedMat = new THREE.SpriteMaterial({
+      map: makeAirdropTexture(false),
+      transparent: true,
+      depthTest: false,
+    });
+    this._airdropFallingMat = new THREE.SpriteMaterial({
+      map: makeAirdropTexture(true),
+      transparent: true,
+      depthTest: false,
+    });
     this._defaultTex = null;
     this._terrainTex = null;
     this._badgeCache = new Map();
     this._playerSprites = new Map();
+    this._airdropSprites = new Map();
     this._playerPins = new Map();
     this._trailMeshes = new Map();
     this._lastTrailKey = "";
     this._lastTrailTime = -999;
     this._lastTrailWidthBucket = -1;
     this._lastZoneWidthBucket = -1;
+    this._lastPlaneWidthBucket = -1;
 
     this._raycaster = new THREE.Raycaster();
     this._pointerDown = null;
@@ -553,6 +692,7 @@ export class Erangel3DRenderer {
     }
     this._buildTerrain();
     this._buildZones();
+    this._buildPlanePath();
 
     // Auto-load built-in or user-provided Erangel 3D buildings GLB (version-busted so updates apply immediately!)
     const glbUrl = config3d?.erangel?.buildings_url;
@@ -767,6 +907,93 @@ export class Erangel3DRenderer {
     this._lastZoneSig = "";
   }
 
+  _buildPlanePath(halfWidth = 0.85, dashPeriod = 14) {
+    while (this.planeGroup.children.length > 0) {
+      const ch = this.planeGroup.children[0];
+      this.planeGroup.remove(ch);
+      ch.geometry?.dispose?.();
+      if (ch.material && ch.material !== this._airdropLandedMat && ch.material !== this._airdropFallingMat) {
+        ch.material.dispose?.();
+      }
+    }
+    this.planeRibbonMesh = null;
+    this.planeIconMesh = null;
+    if (!this.replay?.plane || this.replay.plane.length !== 2) return;
+
+    const sizeCm = this.replay.map_size || 816000;
+    const [wStart, wEnd] = extendPlaneToMapBounds(this.replay.plane[0], this.replay.plane[1], sizeCm);
+    const pts = [];
+    const steps = 180;
+    for (let i = 0; i <= steps; i += 1) {
+      const f = i / steps;
+      const xCm = wStart[0] + (wEnd[0] - wStart[0]) * f;
+      const yCm = wStart[1] + (wEnd[1] - wStart[1]) * f;
+      pts.push(this.worldTo3D(xCm, yCm, 0, { allowAirborne: false, yBias: 0.34 }));
+    }
+
+    const geo = buildRibbonGeometry(pts, halfWidth, { closed: false, uvPeriod: dashPeriod });
+    if (geo) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xfff6d6,
+        map: this._dashTex,
+        transparent: true,
+        opacity: 0.92,
+        alphaTest: 0.06,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      this.planeRibbonMesh = new THREE.Mesh(geo, mat);
+      this.planeRibbonMesh.renderOrder = 5;
+      this.planeGroup.add(this.planeRibbonMesh);
+    }
+
+    // World-space heading angle in XZ plane (PlaneGeometry rotated -PI/2 on X maps +X -> +X, +Y -> -Z)
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    const heading = Math.atan2(-(last.z - first.z), last.x - first.x);
+
+    // Directional chevrons along ground-projected flight line
+    const chevSize = Math.max(4.5, halfWidth * 9.5);
+    for (const frac of [0.2, 0.4, 0.6, 0.8]) {
+      const idx = Math.min(pts.length - 1, Math.round(frac * (pts.length - 1)));
+      const p = pts[idx];
+      const cGeo = new THREE.PlaneGeometry(chevSize, chevSize);
+      cGeo.rotateX(-Math.PI / 2);
+      const cMat = new THREE.MeshBasicMaterial({
+        map: this._chevronTex,
+        transparent: true,
+        opacity: 0.92,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const cMesh = new THREE.Mesh(cGeo, cMat);
+      cMesh.position.set(p.x, p.y + 0.14, p.z);
+      cMesh.rotation.y = heading;
+      cMesh.renderOrder = 6;
+      this.planeGroup.add(cMesh);
+    }
+
+    // Transport airplane icon (animates during opening flight, or sits cleanly near entry edge)
+    const iconSize = Math.max(10, halfWidth * 16);
+    const pGeo = new THREE.PlaneGeometry(iconSize, iconSize);
+    pGeo.rotateX(-Math.PI / 2);
+    const pMat = new THREE.MeshBasicMaterial({
+      map: this._planeTex,
+      transparent: true,
+      opacity: 0.96,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const pMesh = new THREE.Mesh(pGeo, pMat);
+    const startIdx = Math.min(pts.length - 1, Math.round(0.1 * (pts.length - 1)));
+    pMesh.position.set(pts[startIdx].x, pts[startIdx].y + 0.35, pts[startIdx].z);
+    pMesh.rotation.y = heading;
+    pMesh.renderOrder = 14;
+    pMesh.userData = { heading, defaultPos: pts[startIdx].clone() };
+    this.planeIconMesh = pMesh;
+    this.planeGroup.add(pMesh);
+  }
+
   _updateZoneRingLine(meshObj, cxCm, cyCm, radiusCm, sizeCm, yOffset, halfWidth) {
     if (!meshObj) return;
     if (!radiusCm || radiusCm <= 0) {
@@ -800,19 +1027,25 @@ export class Erangel3DRenderer {
   }
 
   _clearDynamicScene() {
-    for (const grp of [this.trailsGroup, this.playersGroup, this.combatGroup]) {
+    for (const grp of [this.planeGroup, this.airdropsGroup, this.trailsGroup, this.playersGroup, this.combatGroup]) {
       while (grp.children.length > 0) {
         const ch = grp.children[0];
         grp.remove(ch);
         ch.geometry?.dispose?.();
-        ch.material?.dispose?.();
+        if (ch.material && ch.material !== this._airdropLandedMat && ch.material !== this._airdropFallingMat) {
+          ch.material.dispose?.();
+        }
       }
     }
+    this.planeRibbonMesh = null;
+    this.planeIconMesh = null;
     this._playerSprites.clear();
+    this._airdropSprites.clear();
     this._playerPins.clear();
     this._trailMeshes.clear();
     this._lastTrailKey = "";
     this._lastZoneSig = "";
+    this._lastPlaneWidthBucket = -1;
   }
 
   _getBadgeSpriteMaterial(key, text, color, highlight) {
@@ -828,12 +1061,76 @@ export class Erangel3DRenderer {
 
   render(state) {
     if (!this.replay) return 0;
-    const { currentTime, trackedIds, followId, flashEvent } = state;
+    const { currentTime, trackedIds, followId, flashEvent, showPlane = true, showAirdrops = true } = state;
     const sizeCm = this.replay.map_size || 816000;
 
     const camTargetDist = Math.max(20, this.camera.position.distanceTo(this.controls.target));
     const worldPerPxAtTarget = computeWorldPerPx(this.camera, this.host, camTargetDist);
     const widthBucket = Math.round(Math.log2(camTargetDist) * 4);
+
+    // 0. Toggle & scale 3D plane flight path + animate transport airplane during opening flight
+    this.planeGroup.visible = Boolean(showPlane);
+    if (showPlane && this.replay.plane && this.replay.plane.length === 2) {
+      if (widthBucket !== this._lastPlaneWidthBucket) {
+        this._lastPlaneWidthBucket = widthBucket;
+        const planeHW = Math.max(0.18, Math.min(1.1, worldPerPxAtTarget * 2.1));
+        const planeDash = Math.max(1.6, Math.min(18, worldPerPxAtTarget * 16));
+        this._buildPlanePath(planeHW, planeDash);
+      }
+      if (this.planeIconMesh) {
+        const pf = this.replay.plane_flight;
+        if (Array.isArray(pf) && pf.length === 6 && pf[3] > pf[0] && currentTime <= pf[3] + 15) {
+          const f = Math.max(0, Math.min(1.15, (currentTime - pf[0]) / (pf[3] - pf[0])));
+          const wxCm = pf[1] + (pf[4] - pf[1]) * f;
+          const wyCm = pf[2] + (pf[5] - pf[2]) * f;
+          const pt = this.worldTo3D(wxCm, wyCm, 0, { allowAirborne: false, yBias: 0 });
+          this.planeIconMesh.position.set(pt.x, TERRAIN_MAX_HEIGHT + 16, pt.z);
+        } else if (this.planeIconMesh.userData?.defaultPos) {
+          const dp = this.planeIconMesh.userData.defaultPos;
+          this.planeIconMesh.position.set(dp.x, dp.y + 0.35, dp.z);
+        }
+      }
+    }
+
+    // 0.5 Update 3D care packages / airdrops (parachute descent + grounded red/blue crate)
+    this.airdropsGroup.visible = Boolean(showAirdrops);
+    if (showAirdrops && Array.isArray(this.replay.care_packages)) {
+      const viewportH = Math.max(240, this.host.clientHeight || window.innerHeight || 600);
+      for (const cp of this.replay.care_packages) {
+        const key = String(cp.id || `${cp.x},${cp.y}`);
+        let sp = this._airdropSprites.get(key);
+        const spawnT = Number(cp.spawn_t ?? 0);
+        const landT = cp.land_t != null ? Number(cp.land_t) : null;
+        if (currentTime < spawnT) {
+          if (sp) sp.visible = false;
+          continue;
+        }
+        const isFalling = landT == null || currentTime < landT;
+        const mat = isFalling ? this._airdropFallingMat : this._airdropLandedMat;
+        if (!sp) {
+          sp = new THREE.Sprite(mat);
+          sp.renderOrder = 16;
+          this.airdropsGroup.add(sp);
+          this._airdropSprites.set(key, sp);
+        } else if (sp.material !== mat) {
+          sp.material = mat;
+        }
+        sp.visible = true;
+        const basePos = this.worldTo3D(cp.x, cp.y, 0, { allowAirborne: false, yBias: 0.42 });
+        let yPos = basePos.y;
+        if (isFalling) {
+          const dur = Math.max(8, (landT ?? spawnT + 30) - spawnT);
+          const prog = Math.max(0, Math.min(1, (currentTime - spawnT) / dur));
+          yPos = basePos.y + (1 - prog) * 26;
+        }
+        sp.position.set(basePos.x, yPos, basePos.z);
+        const camDist = Math.max(15, this.camera.position.distanceTo(sp.position));
+        const worldPerPx = (2 * camDist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5))) / viewportH;
+        const targetPx = isFalling ? 24 : 20;
+        const sz = Math.max(1.4, Math.min(22, targetPx * worldPerPx));
+        sp.scale.set(sz, sz, 1);
+      }
+    }
 
     // 1. Update terrain-hugging 3D safe zone (thin white line) & bluezone (thin cyan line)
     const zones = this.replay.zones || [];
@@ -1029,6 +1326,12 @@ export class Erangel3DRenderer {
     }
     this._badgeCache.clear();
     this._dashTex?.dispose?.();
+    this._planeTex?.dispose?.();
+    this._chevronTex?.dispose?.();
+    this._airdropLandedMat?.map?.dispose?.();
+    this._airdropLandedMat?.dispose?.();
+    this._airdropFallingMat?.map?.dispose?.();
+    this._airdropFallingMat?.dispose?.();
     this.controls.dispose();
     this.renderer.dispose();
     this.host.innerHTML = "";

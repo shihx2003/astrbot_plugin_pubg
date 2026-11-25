@@ -220,6 +220,34 @@ def _sample_telemetry_events() -> list[dict]:
                 "poisonGasWarningRadius": 400000,
             },
         },
+        # Care package (airdrop) spawn & land
+        {
+            "_T": "LogCarePackageSpawn",
+            "_D": "2026-11-25T10:01:10.000Z",
+            "itemPackage": {
+                "itemPackageId": "Carapackage_RedBox_C_0",
+                "location": {"x": 415000, "y": 402000, "z": 50000},
+                "items": [
+                    {"itemId": "Item_Weapon_AWM_C", "category": "Weapon"},
+                    {"itemId": "Item_Head_G_01_Lv3_C", "category": "Equipment"},
+                ],
+            },
+            "common": {"isGame": 1.0},
+        },
+        {
+            "_T": "LogCarePackageLand",
+            "_D": "2026-11-25T10:01:38.000Z",
+            "itemPackage": {
+                "itemPackageId": "Carapackage_RedBox_C_0",
+                "location": {"x": 415200, "y": 402400, "z": 1800},
+                "items": [
+                    {"itemId": "Item_Weapon_AWM_C", "category": "Weapon"},
+                    {"itemId": "Item_Head_G_01_Lv3_C", "category": "Equipment"},
+                    {"itemId": "Item_Armor_C_01_Lv3_C", "category": "Equipment"},
+                ],
+            },
+            "common": {"isGame": 1.0},
+        },
         # Friendly fire (Alpha hits Bravo)
         {
             "_T": "LogPlayerTakeDamage",
@@ -333,6 +361,17 @@ async def test_telemetry_v2_gear_attachments_hitzones_and_clean_ground_trails() 
     assert decoded["terrain_image"] == "static/maps/terrain/erangel.webp"
     assert decoded["heightmap_image"] == "static/maps/height/erangel.png"
     assert len(decoded["plane"]) == 2
+    assert len(decoded["plane_flight"]) == 6
+    # Edge-to-edge flight path must reach map borders (0 or map_size)
+    assert any(c in (0.0, 816000.0) for pt in decoded["plane"] for c in pt)
+    assert len(decoded["care_packages"]) == 1
+    cp0 = decoded["care_packages"][0]
+    assert cp0["spawn_t"] == pytest.approx(70.0)
+    assert cp0["land_t"] == pytest.approx(98.0)
+    assert cp0["x"] == pytest.approx(415200.0)
+    assert "AWM" in cp0["items"]
+    assert "三级头" in cp0["items"]
+    assert "三级甲" in cp0["items"]
     assert "7" in decoded["teams"] and "12" in decoded["teams"]
     assert decoded["teams"]["12"]["rank"] == 1
     assert decoded["teams"]["7"]["rank"] == 2

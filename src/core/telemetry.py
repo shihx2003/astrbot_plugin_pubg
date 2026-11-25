@@ -27,13 +27,86 @@ from .models import (
     slot_color,
 )
 
-# Current compact replay schema version (v4 stores final win_place ranking for all players & teams)
-REPLAY_SCHEMA_VERSION = 4
+# Current compact replay schema version (v5 adds full edge-to-edge plane_flight & care_packages airdrops)
+REPLAY_SCHEMA_VERSION = 5
 
 # Player state encoding inside compact replay tracks: [t, x, y, hp, state, z]
 STATE_ALIVE = 0
 STATE_DBNO = 1
 STATE_DEAD = 2
+
+
+def _clip_line_to_map(
+    p1: tuple[float, float], p2: tuple[float, float], size_cm: float
+) -> list[list[float]]:
+    """Extend directed segment p1 -> p2 cleanly to map borders [0, size_cm]^2."""
+    x1, y1 = p1
+    x2, y2 = p2
+    dx = x2 - x1
+    dy = y2 - y1
+    if math.hypot(dx, dy) < 1e-3:
+        return [[round(x1, 1), round(y1, 1)], [round(x2, 1), round(y2, 1)]]
+
+    t_vals: list[float] = []
+    if abs(dx) > 1e-6:
+        for bx in (0.0, size_cm):
+            t = (bx - x1) / dx
+            y = y1 + dy * t
+            if -1.0 <= y <= size_cm + 1.0:
+                t_vals.append(t)
+    if abs(dy) > 1e-6:
+        for by in (0.0, size_cm):
+            t = (by - y1) / dy
+            x = x1 + dx * t
+            if -1.0 <= x <= size_cm + 1.0:
+                t_vals.append(t)
+
+    if len(t_vals) < 2:
+        return [[round(x1, 1), round(y1, 1)], [round(x2, 1), round(y2, 1)]]
+
+    t_min = min(t_vals)
+    t_max = max(t_vals)
+    if t_max - t_min < 1e-4:
+        return [[round(x1, 1), round(y1, 1)], [round(x2, 1), round(y2, 1)]]
+
+    sx = max(0.0, min(size_cm, x1 + dx * t_min))
+    sy = max(0.0, min(size_cm, y1 + dy * t_min))
+    ex = max(0.0, min(size_cm, x1 + dx * t_max))
+    ey = max(0.0, min(size_cm, y1 + dy * t_max))
+    return [[round(sx, 1), round(sy, 1)], [round(ex, 1), round(ey, 1)]]
+
+
+def _extract_care_package_items(raw_items: list[dict[str, Any]] | None) -> list[str]:
+    """Summarize top highlight loot items inside a care package (weapons + Lv3 gear)."""
+    if not raw_items:
+        return []
+    weapons: list[str] = []
+    gear: list[str] = []
+    seen: set[str] = set()
+    slot_names = {"helmet": "三级头", "vest": "三级甲", "backpack": "三级包"}
+    for it in raw_items:
+        if not isinstance(it, dict):
+            continue
+        item_id = str(it.get("itemId") or "")
+        if not item_id:
+            continue
+        cat = str(it.get("category") or "")
+        if cat == "Weapon" or item_id.startswith("Item_Weapon_"):
+            name = resolve_weapon_name(item_id)
+            if name and name not in seen:
+                seen.add(name)
+                weapons.append(name)
+            continue
+        g = resolve_gear_slot_and_level(item_id)
+        if g and g[1] >= 3:
+            lbl = slot_names.get(g[0], "")
+            if lbl and lbl not in seen:
+                seen.add(lbl)
+                gear.append(lbl)
+        elif "Ghillie" in item_id and "吉利服" not in seen:
+            seen.add("吉利服")
+            gear.append("吉利服")
+    return (weapons + gear)[:4]
 
 
 def _parse_iso_ts(value: str | None) -> float | None:
@@ -330,7 +403,9 @@ def build_replay_sync(
     last_zone_sig: tuple[int, int, int, int, int, int] | None = None
     last_zone_t: float = -999.0
     events: list[dict[str, Any]] = []
-    aircraft_points: list[tuple[float, float]] = []
+    aircraft_strict: list[tuple[float, float, float]] = []
+    aircraft_fallback: list[tuple[float, float, float]] = []
+    care_packages_map: dict[str, dict[str, Any]] = {}
     max_t: float = float(match_summary.duration or 0)
 
     # Live inventory & fight window trackers (discarded before serialization)
@@ -539,18 +614,22 @@ def build_replay_sync(
             x, y, z = _loc_xyz(char)
             hp = float(char.get("health") or 0.0)
             vehicle = ev.get("vehicle") or {}
-            in_aircraft = bool(
+            vid_str = str(vehicle.get("vehicleId") or "")
+            strict_aircraft = bool(
                 char.get("isInAircraft")
                 or ev.get("isInAircraft")
-                or "TransportAircraft" in str(vehicle.get("vehicleId") or "")
-                or (0.05 <= is_game < 0.5)
+                or "TransportAircraft" in vid_str
+                or (0.05 <= is_game < 0.25)
             )
+            in_aircraft = strict_aircraft or (0.05 <= is_game < 0.5)
             if in_aircraft:
-                if (x != 0.0 or y != 0.0) and (
-                    not aircraft_points
-                    or math.hypot(x - aircraft_points[-1][0], y - aircraft_points[-1][1]) > 15000
-                ):
-                    aircraft_points.append((x, y))
+                if x != 0.0 or y != 0.0:
+                    target_list = aircraft_strict if strict_aircraft else aircraft_fallback
+                    if not target_list or (
+                        t_rel - target_list[-1][0] >= 1.0
+                        and math.hypot(x - target_list[-1][1], y - target_list[-1][2]) > 8000
+                    ):
+                        target_list.append((t_rel, x, y))
                 # Do NOT add pre-jump airplane coordinates into player's ground movement trail!
                 continue
             if is_game < 0.5:
@@ -562,6 +641,52 @@ def build_replay_sync(
                 append_track_point(aid, t_rel, x, y, hp, state, z=z, force=len(tracks[aid]) == 0)
                 if t_rel > players[aid]["time_survived"]:
                     players[aid]["time_survived"] = round(t_rel, 1)
+
+        elif ev_type == "LogVehicleLeave":
+            vehicle = ev.get("vehicle") or {}
+            if "TransportAircraft" in str(vehicle.get("vehicleId") or ""):
+                char = ev.get("character")
+                x, y, _ = _loc_xyz(char)
+                if x != 0.0 or y != 0.0:
+                    if not aircraft_strict or math.hypot(
+                        x - aircraft_strict[-1][1], y - aircraft_strict[-1][2]
+                    ) > 8000:
+                        aircraft_strict.append((t_rel, x, y))
+
+        elif ev_type in ("LogCarePackageSpawn", "LogCarePackageLand"):
+            pkg = ev.get("itemPackage") or {}
+            loc = pkg.get("location") or {}
+            px = round(float(loc.get("x") or 0.0), 1)
+            py = round(float(loc.get("y") or 0.0), 1)
+            pz = round(float(loc.get("z") or 0.0), 1)
+            if px == 0.0 and py == 0.0:
+                continue
+            pkg_id = str(pkg.get("itemPackageId") or f"cp_{int(round(px // 1000))}_{int(round(py // 1000))}")
+            loot_items = _extract_care_package_items(pkg.get("items"))
+            entry = care_packages_map.get(pkg_id)
+            if entry is None:
+                entry = {
+                    "id": pkg_id,
+                    "spawn_t": None,
+                    "land_t": None,
+                    "x": px,
+                    "y": py,
+                    "z": pz,
+                    "items": loot_items,
+                }
+                care_packages_map[pkg_id] = entry
+            if ev_type == "LogCarePackageSpawn":
+                if entry["spawn_t"] is None:
+                    entry["spawn_t"] = round(t_rel, 1)
+                if entry["land_t"] is None:
+                    entry["x"], entry["y"], entry["z"] = px, py, pz
+                if loot_items and not entry["items"]:
+                    entry["items"] = loot_items
+            else:
+                entry["land_t"] = round(t_rel, 1)
+                entry["x"], entry["y"], entry["z"] = px, py, pz
+                if loot_items:
+                    entry["items"] = loot_items
 
         elif ev_type == "LogParachuteLanding":
             char = ev.get("character")
@@ -988,11 +1113,31 @@ def build_replay_sync(
                     players[mid]["win_place"] = t_rank
 
     plane: list[list[float]] = []
-    if len(aircraft_points) >= 2:
-        plane = [
-            [round(aircraft_points[0][0], 1), round(aircraft_points[0][1], 1)],
-            [round(aircraft_points[-1][0], 1), round(aircraft_points[-1][1], 1)],
-        ]
+    plane_flight: list[float] = []
+    air_pts = aircraft_strict if len(aircraft_strict) >= 2 else (aircraft_strict + aircraft_fallback)
+    if len(air_pts) >= 2:
+        air_pts.sort(key=lambda item: item[0])
+        p_start = air_pts[0]
+        p_end = air_pts[-1]
+        if math.hypot(p_end[1] - p_start[1], p_end[2] - p_start[2]) >= 5000:
+            plane_flight = [
+                round(p_start[0], 1),
+                round(p_start[1], 1),
+                round(p_start[2], 1),
+                round(p_end[0], 1),
+                round(p_end[1], 1),
+                round(p_end[2], 1),
+            ]
+            plane = _clip_line_to_map((p_start[1], p_start[2]), (p_end[1], p_end[2]), float(map_info.size_cm))
+
+    care_packages: list[dict[str, Any]] = []
+    for cp in care_packages_map.values():
+        if cp["spawn_t"] is None and cp["land_t"] is not None:
+            cp["spawn_t"] = round(max(0.0, float(cp["land_t"]) - 32.0), 1)
+        elif cp["spawn_t"] is None:
+            cp["spawn_t"] = 0.0
+        care_packages.append(cp)
+    care_packages.sort(key=lambda item: (float(item.get("spawn_t") or 0.0), float(item.get("land_t") or 0.0)))
 
     events.sort(key=lambda e: e["t"])
 
@@ -1010,6 +1155,8 @@ def build_replay_sync(
         "created_at": match_summary.created_at,
         "duration": round(max_t, 1),
         "plane": plane,
+        "plane_flight": plane_flight,
+        "care_packages": care_packages,
         "zones": zones,
         "teams": teams,
         "players": players,

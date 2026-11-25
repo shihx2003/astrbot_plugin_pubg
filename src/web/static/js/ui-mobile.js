@@ -38,6 +38,8 @@ const state = {
   currentReplay: null,
   config3d: null,
   show3dBuildings: true,
+  showPlane: true,
+  showAirdrops: true,
   eventFilter: "all",
   playerFilter: "",
   trackSort: "rank",
@@ -657,6 +659,23 @@ function syncReplayUI(ui) {
   $("btn-layer-terrain").classList.toggle("active", ui.mapLayer === "terrain");
   $("btn-dim-2d").classList.toggle("active", ui.dimMode !== "3d");
   $("btn-dim-3d").classList.toggle("active", ui.dimMode === "3d");
+
+  const planeBtn = $("btn-toggle-plane");
+  if (planeBtn) {
+    planeBtn.classList.toggle("active", ui.showPlane !== false);
+    planeBtn.textContent = ui.showPlane !== false ? "✈️ 航线: 开" : "✈️ 航线: 关";
+  }
+  const airdropBtn = $("btn-toggle-airdrop");
+  if (airdropBtn) {
+    const totalCp = state.currentReplay?.care_packages?.length || 0;
+    airdropBtn.classList.toggle("active", ui.showAirdrops !== false);
+    airdropBtn.textContent =
+      ui.showAirdrops !== false
+        ? totalCp > 0
+          ? `📦 空投(${totalCp})`
+          : "📦 空投: 开"
+        : "📦 空投: 关";
+  }
 
   const hintEl = document.querySelector(".touch-hint");
   if (hintEl) {
@@ -1444,6 +1463,38 @@ function bindUIEvents() {
   $("btn-layer-default").addEventListener("click", () => controller.setMapLayer("default"));
   $("btn-layer-terrain").addEventListener("click", () => controller.setMapLayer("terrain"));
 
+  const PLANE_KEY = "squadlens_show_plane";
+  const AIRDROP_KEY = "squadlens_show_airdrop";
+  try {
+    const savedPlane = localStorage.getItem(PLANE_KEY);
+    const savedAirdrop = localStorage.getItem(AIRDROP_KEY);
+    if (savedPlane !== null) state.showPlane = savedPlane !== "0";
+    if (savedAirdrop !== null) state.showAirdrops = savedAirdrop !== "0";
+  } catch {
+    // ignore storage errors
+  }
+  controller.setShowPlane(state.showPlane);
+  controller.setShowAirdrops(state.showAirdrops);
+
+  $("btn-toggle-plane")?.addEventListener("click", () => {
+    state.showPlane = !state.showPlane;
+    try {
+      localStorage.setItem(PLANE_KEY, state.showPlane ? "1" : "0");
+    } catch {
+      // ignore
+    }
+    controller.setShowPlane(state.showPlane);
+  });
+  $("btn-toggle-airdrop")?.addEventListener("click", () => {
+    state.showAirdrops = !state.showAirdrops;
+    try {
+      localStorage.setItem(AIRDROP_KEY, state.showAirdrops ? "1" : "0");
+    } catch {
+      // ignore
+    }
+    controller.setShowAirdrops(state.showAirdrops);
+  });
+
   $("btn-dim-2d").addEventListener("click", () => {
     $("replay-3d-host").classList.add("hidden");
     $("replay-canvas").classList.remove("hidden");
@@ -1461,7 +1512,7 @@ function bindUIEvents() {
         ? "正在加载艾伦格 3D 地形与建筑白模..."
         : "正在初始化艾伦格 3D 立体地形回放...";
       try {
-        const mod = await import("./renderer-3d.js?v=0.5.5");
+        const mod = await import("./renderer-3d.js?v=0.5.6");
         const r3d = new mod.Erangel3DRenderer($("replay-3d-host"), (aid) => controller.toggleTrack(aid));
         r3d.setOnUserInteract(() => {
           if (controller.followId) controller.setFollow(null);

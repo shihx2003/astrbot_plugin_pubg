@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0f17" />
   <title>SquadLens · PUBG 小队战绩与战术回放</title>
-  <link rel="stylesheet" href="./static/css/style.css?v=0.5.5" />
+  <link rel="stylesheet" href="./static/css/style.css?v=0.5.6" />
 </head>
 <body>
   <!-- Toast Notifications -->
@@ -210,6 +210,8 @@
           <button id="btn-layer-default" class="layer-btn active" data-layer="default">默认</button>
           <button id="btn-layer-terrain" class="layer-btn" data-layer="terrain">地形图</button>
         </div>
+        <button id="btn-toggle-plane" class="hud-pill clickable-pill toggle-pill active" type="button" title="切换显示飞机航线">✈️ 航线</button>
+        <button id="btn-toggle-airdrop" class="hud-pill clickable-pill toggle-pill active" type="button" title="切换显示空投落点">📦 空投</button>
         <button id="hud-3d-status" class="hud-pill clickable-pill hidden" title="点击切换 3D 建筑白模显示"></button>
         <div id="hud-follow-badge" class="hud-pill accent hidden">
           <span id="hud-follow-text">跟随中</span>
@@ -294,6 +296,6 @@
     </aside>
   </section>
 
-  <script type="module" src="./static/js/ui-mobile.js?v=0.5.5"></script>
+  <script type="module" src="./static/js/ui-mobile.js?v=0.5.6"></script>
 </body>
 </html>

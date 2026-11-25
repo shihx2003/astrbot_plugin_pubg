@@ -26,6 +26,8 @@ export class ReplayController {
     this.currentTime = 0;
     this.duration = 0;
     this.mapLayer = "default";
+    this.showPlane = true;
+    this.showAirdrops = true;
     this.trackedIds = new Set();
     this.followId = null;
     this.flashEvent = null;
@@ -119,6 +121,16 @@ export class ReplayController {
     this.mapLayer = layer === "terrain" ? "terrain" : "default";
     this.renderer.setMapLayer(this.mapLayer);
     if (this.renderer3d) this.renderer3d.setMapLayer(this.mapLayer);
+    this._notifyState();
+  }
+
+  setShowPlane(visible) {
+    this.showPlane = Boolean(visible);
+    this._notifyState();
+  }
+
+  setShowAirdrops(visible) {
+    this.showAirdrops = Boolean(visible);
     this._notifyState();
   }
 
@@ -269,6 +281,8 @@ export class ReplayController {
         trackedIds: this.trackedIds,
         followId: this.followId,
         flashEvent: this.flashEvent,
+        showPlane: this.showPlane,
+        showAirdrops: this.showAirdrops,
       };
       const aliveCount =
         this.dimMode === "3d" && this.renderer3d
@@ -291,6 +305,8 @@ export class ReplayController {
         duration: this.duration,
         mapLayer: this.mapLayer,
         dimMode: this.dimMode,
+        showPlane: this.showPlane,
+        showAirdrops: this.showAirdrops,
         trackedIds: this.trackedIds,
         followId: this.followId,
       });
