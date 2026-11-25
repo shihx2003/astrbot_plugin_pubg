@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0f17" />
+  <title>SquadLens · PUBG 小队战绩与战术回放</title>
+  <link rel="stylesheet" href="./static/css/style.css?v=0.5.3" />
+</head>
+<body>
+  <!-- Toast Notifications -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Download & Cache Management Modal -->
+  <div id="tools-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="tools-modal-title">
+    <div class="modal-card tools-modal-card">
+      <div class="pm-header">
+        <h2 id="tools-modal-title">数据下载与缓存管理</h2>
+        <button id="tools-close" class="icon-btn" aria-label="关闭">×</button>
+      </div>
+
+      <div class="cache-stats-row">
+        <div class="pm-stat-box">
+          <div id="tm-cached-matches" class="pm-stat-val">0</div>
+          <div class="pm-stat-lbl">已缓存对局</div>
+        </div>
+        <div class="pm-stat-box">
+          <div id="tm-cached-replays" class="pm-stat-val">0 / 200</div>
+          <div class="pm-stat-lbl">已缓存回放</div>
+        </div>
+        <div class="pm-stat-box">
+          <div id="tm-cached-size" class="pm-stat-val">0 KB</div>
+          <div class="pm-stat-lbl">回放占用空间</div>
+        </div>
+      </div>
+
+      <div class="tools-section" id="tools-download-sec">
+        <div class="pm-section-title">⬇ 下载与备份（防止官方 14 天后回放过期）</div>
+        <div class="tools-btn-stack">
+          <button id="btn-export-csv" class="btn-secondary full-width tools-action-btn">
+            <span>📊 导出当前战绩表格 (.csv)</span>
+            <span class="tools-action-sub">Excel 兼容</span>
+          </button>
+          <button id="btn-export-json" class="btn-secondary full-width tools-action-btn">
+            <span>📄 导出当前战绩摘要 (.json)</span>
+            <span class="tools-action-sub">完整结构</span>
+          </button>
+          <button id="btn-export-zip" class="btn-primary full-width tools-action-btn">
+            <span>📦 打包下载全部已缓存回放 (.zip)</span>
+            <span class="tools-action-sub">离线归档</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="tools-section" id="tools-cache-sec">
+        <div class="pm-section-title">🧹 清除缓存</div>
+        <div class="tools-btn-stack">
+          <button id="btn-clear-replays" class="btn-secondary full-width tools-action-btn">
+            <span>🧹 清除服务端回放文件缓存</span>
+            <span class="tools-action-sub">保留对局战绩</span>
+          </button>
+          <button id="btn-clear-all-cache" class="btn-danger full-width tools-action-btn">
+            <span>🗑️ 清除全部对局与回放缓存</span>
+            <span class="tools-action-sub">保留小队绑定</span>
+          </button>
+          <button id="btn-clear-browser" class="btn-ghost full-width tools-action-btn">
+            <span>🔄 清理浏览器本地缓存并强刷</span>
+            <span class="tools-action-sub">重置界面偏好</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Access Code Auth Modal -->
+  <div id="auth-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div class="modal-card">
+      <div class="modal-badge">🔒 访问受保护</div>
+      <h2 id="auth-title">SquadLens 战绩看板</h2>
+      <p class="modal-desc">请输入管理员设置的访问口令以查看小队战绩与 2D 战术回放。</p>
+      <form id="auth-form">
+        <input id="auth-input" type="password" placeholder="输入访问口令..." autocomplete="current-password" required />
+        <p id="auth-error" class="error-text hidden"></p>
+        <button type="submit" class="btn-primary full-width">验证进入</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Player Match Inspector Modal -->
+  <div id="player-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="pm-name">
+    <div class="modal-card player-modal-card">
+      <div class="pm-header">
+        <div class="pm-title-wrap">
+          <span id="pm-team-badge" class="team-badge">#1</span>
+          <span id="pm-slot-badge" class="slot-badge hidden">1号位</span>
+          <h2 id="pm-name">Player</h2>
+        </div>
+        <button id="pm-close" class="icon-btn" aria-label="关闭">×</button>
+      </div>
+      <div id="pm-subtitle" class="pm-subtitle"></div>
+
+      <div id="pm-stats-grid" class="pm-stats-grid"></div>
+
+      <div class="pm-section-title">装备概览</div>
+      <div id="pm-gear-row" class="gear-row"></div>
+
+      <div class="pm-section-title">本局武器与配件</div>
+      <div id="pm-weapons-list" class="pm-weapons-list"></div>
+
+      <div class="pm-section-title">个人交战记录（点击跳至交火前 3 秒）</div>
+      <div id="pm-events-list" class="pm-events-list"></div>
+
+      <div class="pm-actions">
+        <button id="pm-btn-track" class="btn-secondary">追踪路线</button>
+        <button id="pm-btn-track-team" class="btn-secondary">追踪整队</button>
+        <button id="pm-btn-follow" class="btn-secondary">视角跟随</button>
+        <button id="pm-btn-search" class="btn-primary">查TA战绩</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Navigation Header -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button id="btn-back-dashboard" class="icon-btn hidden" title="返回对局列表" aria-label="返回对局列表">←</button>
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">SquadLens</span>
+      </div>
+      <span id="replay-header-meta" class="header-meta hidden"></span>
+    </div>
+    <form id="search-form" class="search-bar">
+      <input id="search-ign" type="search" placeholder="查任意玩家 IGN..." aria-label="搜索任意玩家" />
+      <select id="search-platform" aria-label="游戏平台">
+        <option value="steam">Steam</option>
+        <option value="kakao">Kakao</option>
+        <option value="psn">PSN</option>
+        <option value="xbox">Xbox</option>
+      </select>
+      <button type="submit" class="btn-secondary">查询</button>
+    </form>
+  </header>
+
+  <!-- Main Dashboard View -->
+  <main id="dashboard-view" class="dashboard">
+    <section class="squad-banner">
+      <div class="section-head">
+        <h2>固定小队成员</h2>
+        <div class="head-actions">
+          <button id="btn-reset-squad" class="btn-ghost hidden">返回小队视图</button>
+          <button id="btn-open-download" class="btn-secondary" title="导出战绩表格或打包下载回放">⬇ 下载</button>
+          <button id="btn-open-cache" class="btn-secondary" title="查看磁盘占用并清除缓存">🧹 清缓存</button>
+          <button id="btn-refresh-matches" class="btn-secondary">↻ 刷新</button>
+        </div>
+      </div>
+      <div id="squad-chips" class="squad-chips"></div>
+    </section>
+
+    <!-- Squad KPI Overview Strip -->
+    <section id="squad-kpi-bar" class="kpi-grid hidden" aria-label="近期战绩概览"></section>
+
+    <section class="matches-section">
+      <div class="section-head">
+        <div class="matches-head-left">
+          <h2 id="matches-title">近期对局记录</h2>
+          <button id="cache-badge" class="subtle-pill clickable-pill" title="点击管理本地缓存与备份"></button>
+        </div>
+        <div class="matches-head-right">
+          <select id="match-limit-select" class="filter-select" aria-label="显示对局数量">
+            <option value="10" selected>最近 10 场</option>
+            <option value="20">最近 20 场</option>
+            <option value="30">最近 30 场</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="matches-filter-bar" class="filter-bar hidden">
+        <div class="filter-chips" role="group" aria-label="对局快捷筛选">
+          <button class="chip-btn active" data-res-filter="all">全部</button>
+          <button class="chip-btn" data-res-filter="chicken">🍗 吃鸡</button>
+          <button class="chip-btn" data-res-filter="top5">🏆 前五</button>
+          <button class="chip-btn" data-res-filter="cached">⚡ 已缓存</button>
+        </div>
+        <div class="filter-right">
+          <select id="filter-map-select" class="filter-select" aria-label="按地图筛选">
+            <option value="all">全部地图</option>
+          </select>
+          <span id="filter-count-hint" class="filter-count-hint"></span>
+        </div>
+      </div>
+
+      <div id="dashboard-status" class="status-banner hidden"></div>
+      <div id="matches-list" class="matches-grid"></div>
+    </section>
+  </main>
+
+  <!-- 2D Tactical Replay View -->
+  <section id="replay-view" class="replay-shell hidden">
+    <div class="replay-stage-wrap">
+      <canvas id="replay-canvas"></canvas>
+      <div id="replay-3d-host" class="replay-3d-host hidden"></div>
+
+      <!-- Floating Top-Left HUD -->
+      <div class="canvas-hud-top">
+        <div id="hud-alive-badge" class="hud-pill">存活 --</div>
+        <div id="hud-dim-switch" class="layer-switch hidden" role="group" aria-label="2D或3D模式切换">
+          <button id="btn-dim-2d" class="layer-btn active" data-dim="2d">2D</button>
+          <button id="btn-dim-3d" class="layer-btn" data-dim="3d">3D</button>
+        </div>
+        <div id="hud-layer-switch" class="layer-switch" role="group" aria-label="地图图层切换">
+          <button id="btn-layer-default" class="layer-btn active" data-layer="default">默认</button>
+          <button id="btn-layer-terrain" class="layer-btn" data-layer="terrain">地形图</button>
+        </div>
+        <button id="hud-3d-status" class="hud-pill clickable-pill hidden" title="点击切换 3D 建筑白模显示"></button>
+        <div id="hud-follow-badge" class="hud-pill accent hidden">
+          <span id="hud-follow-text">跟随中</span>
+          <button id="btn-stop-follow" class="mini-x" aria-label="取消跟随">×</button>
+        </div>
+      </div>
+
+      <!-- Floating Top-Right Map Quick Controls -->
+      <div class="canvas-hud-tools">
+        <button id="btn-zoom-in" class="tool-btn" title="放大" aria-label="放大">+</button>
+        <button id="btn-zoom-out" class="tool-btn" title="缩小" aria-label="缩小">−</button>
+        <button id="btn-reset-view" class="tool-btn" title="重置视角" aria-label="重置视角">⌖</button>
+        <button id="btn-share-current-replay" class="tool-btn" title="复制本局回放链接" aria-label="复制本局回放链接">🔗</button>
+        <button id="btn-download-current-replay" class="tool-btn" title="下载本局回放 JSON" aria-label="下载本局回放 JSON">↓</button>
+        <button id="btn-toggle-drawer" class="tool-btn mobile-only" title="展开面板" aria-label="展开面板">☰</button>
+      </div>
+
+      <!-- Loading Overlay -->
+      <div id="replay-loading" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p id="replay-loading-text">正在加载并解析官方 Telemetry 2D 战术回放...</p>
+      </div>
+
+      <!-- Bottom Thumb-Friendly Playback Bar -->
+      <div class="playback-bar">
+        <button id="btn-play-pause" class="play-btn" aria-label="播放或暂停">▶</button>
+        <div class="timeline-wrap">
+          <input id="timeline-slider" type="range" min="0" max="100" step="0.5" value="0" aria-label="回放时间轴" />
+          <div class="time-row">
+            <span id="time-current">00:00</span>
+            <span class="touch-hint">单指拖拽 · 双指缩放 · 点选地图玩家追踪虚线轨迹</span>
+            <span id="time-total">00:00</span>
+          </div>
+        </div>
+        <button id="btn-speed" class="speed-btn" aria-label="切换播放倍速">5x</button>
+      </div>
+    </div>
+
+    <!-- Desktop Sidebar / Mobile Bottom Drawer -->
+    <aside id="replay-drawer" class="replay-drawer">
+      <div id="drawer-resizer" class="drawer-resizer desktop-only" title="左右拖拽调整侧边栏宽度（双击重置）" aria-label="调整侧边栏宽度"></div>
+      <div class="drawer-handle mobile-only" id="drawer-handle"><span></span></div>
+      <div class="drawer-tabs" role="tablist">
+        <button class="tab-btn active" data-tab="events" role="tab">淘汰日志</button>
+        <button class="tab-btn" data-tab="tracks" role="tab">队伍追踪</button>
+        <button class="tab-btn" data-tab="stats" role="tab">本局战报</button>
+      </div>
+
+      <div id="tab-events" class="tab-panel active">
+        <div class="quick-actions-row">
+          <button class="chip-btn active" data-ev-filter="all">全场淘汰</button>
+          <button class="chip-btn" data-ev-filter="squad">仅看我方</button>
+          <button class="chip-btn" data-ev-filter="tk">友伤高光</button>
+        </div>
+        <p class="panel-hint">点击跳至前 3 秒 · 点 ▾ 看配件与受击 · 点玩家名查详情</p>
+        <div id="events-list" class="events-list"></div>
+      </div>
+
+      <div id="tab-tracks" class="tab-panel">
+        <div class="quick-actions-row">
+          <button id="btn-track-squad-only" class="chip-btn">仅看我方小队</button>
+          <button id="btn-track-killer-team" class="chip-btn">对比淘汰我方队伍</button>
+          <button id="btn-clear-extra-tracks" class="chip-btn">清空额外追踪</button>
+        </div>
+        <div class="panel-subtitle">我方小队（按游戏内 1~4 号位配色）</div>
+        <div id="squad-track-list" class="player-list"></div>
+        <div class="tracks-subhead">
+          <span class="panel-subtitle">场上其他队伍与玩家</span>
+          <div class="sort-switch" role="group" aria-label="排序方式">
+            <button class="sort-btn active" data-track-sort="rank">按排名</button>
+            <button class="sort-btn" data-track-sort="team">按队伍</button>
+          </div>
+        </div>
+        <input id="player-filter-input" class="inline-search" type="search" placeholder="筛选玩家名、队伍号或最终排名..." />
+        <div id="other-track-list" class="player-list"></div>
+      </div>
+
+      <div id="tab-stats" class="tab-panel">
+        <div id="replay-highlights" class="highlights-box"></div>
+        <div id="replay-scoreboard" class="scoreboard-list"></div>
+      </div>
+    </aside>
+  </section>
+
+  <script type="module" src="./static/js/ui-mobile.js?v=0.5.3"></script>
+</body>
+</html>

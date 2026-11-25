@@ -1,0 +1,172 @@
+{
+  "pubg_api_key": {
+    "type": "string",
+    "description": "PUBG 官方 Developer API Key",
+    "hint": "请在 https://developer.pubg.com/ 申请免费开发者 API Key（10 次/分钟配额）。切勿泄露给他人。",
+    "obvious_hint": true,
+    "default": ""
+  },
+  "default_platform": {
+    "type": "string",
+    "description": "默认查询游戏平台",
+    "hint": "临时查询非小队成员或未单独指定平台时使用的默认平台。",
+    "options": [
+      "steam",
+      "kakao",
+      "psn",
+      "xbox",
+      "stadia"
+    ],
+    "default": "steam"
+  },
+  "squad_members": {
+    "type": "template_list",
+    "description": "默认固定小队成员名单",
+    "hint": "绑定固定开黑好友的游戏 ID；不固定绑定几号位，对局中会根据游戏内小队顺序自动识别 1~4 号位与游戏内对应颜色（黄/橙/蓝/绿）。",
+    "default": [
+      {
+        "__template_key": "member",
+        "ign": "",
+        "alias": "",
+        "platform": "steam",
+        "color": ""
+      },
+      {
+        "__template_key": "member",
+        "ign": "",
+        "alias": "",
+        "platform": "steam",
+        "color": ""
+      },
+      {
+        "__template_key": "member",
+        "ign": "",
+        "alias": "",
+        "platform": "steam",
+        "color": ""
+      },
+      {
+        "__template_key": "member",
+        "ign": "",
+        "alias": "",
+        "platform": "steam",
+        "color": ""
+      }
+    ],
+    "templates": {
+      "member": {
+        "name": "小队成员",
+        "hint": "只需填写 PUBG 游戏 ID；备注与轨迹颜色均为可选项，留空则按游戏内真实号位色自动分配。",
+        "display_item": "ign",
+        "hide_hint_in_list": true,
+        "items": {
+          "ign": {
+            "type": "string",
+            "description": "游戏 ID (IGN)",
+            "hint": "区分大小写，需与 PUBG 游戏内名称完全一致。",
+            "default": ""
+          },
+          "alias": {
+            "type": "string",
+            "description": "群内备注 / 昵称（可选）",
+            "hint": "留空时直接显示游戏 ID，不强行命名为固定号位。",
+            "default": ""
+          },
+          "platform": {
+            "type": "string",
+            "description": "游戏平台",
+            "options": [
+              "steam",
+              "kakao",
+              "psn",
+              "xbox",
+              "stadia"
+            ],
+            "default": "steam"
+          },
+          "color": {
+            "type": "string",
+            "description": "自定义轨迹颜色（可选 Hex）",
+            "hint": "留空则自动使用 PUBG 游戏内 1~4 号位对应颜色（1黄/2橙/3蓝/4绿）；也可填写 Hex 强行覆盖。",
+            "default": ""
+          }
+        }
+      }
+    }
+  },
+  "enable_auto_broadcast": {
+    "type": "bool",
+    "description": "开启对局结束自动群播报",
+    "hint": "开启后将按设定间隔低频轮询小队最新对局，检测到打完新的一局时自动向已绑定群聊推送战报。",
+    "default": false
+  },
+  "broadcast_targets": {
+    "type": "list",
+    "description": "自动播报目标会话列表",
+    "hint": "填写 AstrBot 的 unified_msg_origin（如 aiocqhttp:GroupMessage:123456789），更推荐直接在目标 QQ 群发送 /pubg bind 自动绑定。",
+    "items": {
+      "type": "string"
+    },
+    "default": []
+  },
+  "poll_interval_seconds": {
+    "type": "int",
+    "description": "后台对局轮询间隔（秒）",
+    "hint": "建议不低于 120 秒，避免过多消耗 PUBG 官方 10 次/分钟的免费 API 配额。",
+    "default": 180
+  },
+  "enable_web": {
+    "type": "bool",
+    "description": "启用内嵌 Web 战绩看板与 2D 回放服务",
+    "hint": "关闭时仅运行 QQ 机器人功能并释放端口；开启后监听本机端口，可配合 frpc + 公网 Nginx HTTPS 对群友开放。",
+    "default": false
+  },
+  "web_host": {
+    "type": "string",
+    "description": "内嵌 Web 监听地址",
+    "hint": "建议保持 127.0.0.1 专供本机 frpc / Nginx 反代转发；若需局域网直连可改为 0.0.0.0。",
+    "default": "127.0.0.1"
+  },
+  "web_port": {
+    "type": "int",
+    "description": "内嵌 Web 监听端口",
+    "hint": "默认绑定 8001，支持自由修改为任意未占用端口，修改后重载插件生效。",
+    "default": 8001
+  },
+  "web_public_url": {
+    "type": "string",
+    "description": "公网 Web 访问域名（可选）",
+    "hint": "例如 https://pubg.example.com（末尾无需斜杠）。配置后 QQ 群战报将自动附带“点击查看本局 2D 回放”直达链接。",
+    "default": ""
+  },
+  "web_access_code": {
+    "type": "string",
+    "description": "Web 访问口令（可选）",
+    "hint": "设置后需在网页输入口令或携带令牌才可查询数据，防止陌生人刷接口耗尽 API 额度；留空则免口令访问。",
+    "default": ""
+  },
+  "enable_3d_replay": {
+    "type": "bool",
+    "description": "启用网页端 3D 战术回放模式（当前支持艾伦格）",
+    "hint": "开启后在艾伦格回放界面显示 2D/3D 切换按钮（内置地形起伏，支持外挂 buildings.glb 建筑白模）；关闭后彻底隐藏 3D 选项且不加载 3D 资源。",
+    "default": true
+  },
+  "recent_matches_limit": {
+    "type": "int",
+    "description": "默认展示的近期对局数量",
+    "hint": "查询近期对局列表时默认返回的场次上限。",
+    "default": 10
+  },
+  "max_cached_replays": {
+    "type": "int",
+    "description": "本地最大缓存回放场次 (LRU)",
+    "hint": "本地最多保留的精简压缩 2D 回放文件数，默认 200 场（适配内网存储），超出上限后自动淘汰最旧场次。",
+    "default": 200
+  },
+  "telemetry_sample_interval_sec": {
+    "type": "float",
+    "description": "2D 回放轨迹抽稀间隔（秒）",
+    "hint": "解析 Telemetry 时玩家坐标的最小采样间隔，建议 1.0~2.0 秒，兼顾流畅度与传输体积。",
+    "default": 1.5
+  }
+}
