@@ -19,7 +19,7 @@ const WORLD_SIZE = 800; // Maps 816,000 cm -> 800 Three.js units (1 unit = 10.2m
 const TERRAIN_SEGMENTS = 320;
 const TERRAIN_MAX_HEIGHT = 46; // Visual elevation scale in Three.js units (clear dramatic hills)
 const SEA_LEVEL_Y = 3.2;
-const ASSET_VER = "0.5.4";
+const ASSET_VER = "0.5.5";
 
 function withAssetVer(url) {
   if (!url) return "";
@@ -416,7 +416,7 @@ export class Erangel3DRenderer {
     this.controls.update();
   }
 
-  worldTo3D(xCm, yCm, zCm = 0, { allowAirborne = true, yBias = 1.15 } = {}) {
+  worldTo3D(xCm, yCm, zCm = 0, { allowAirborne = true, yBias = 0.35 } = {}) {
     const sizeCm = this.replay?.map_size || 816000;
     const nx = Math.max(0, Math.min(1, xCm / sizeCm));
     const nz = Math.max(0, Math.min(1, yCm / sizeCm));
@@ -428,8 +428,8 @@ export class Erangel3DRenderer {
       // Smoothly lift genuine airborne/parachute segments without spiky ground jitter
       const zUnits = (zCm / sizeCm) * WORLD_SIZE * 1.15;
       const aboveGround = zUnits - terrainY;
-      if (aboveGround > 14) {
-        wy = terrainY + yBias + (aboveGround - 14);
+      if (aboveGround > 18) {
+        wy = terrainY + yBias + (aboveGround - 18);
       }
     }
     return new THREE.Vector3(wx, wy, wz);
@@ -501,7 +501,7 @@ export class Erangel3DRenderer {
     if (rawPts.length < 2) return [];
 
     // Subdivide long segments along the terrain surface so trails NEVER clip into hills!
-    const maxStep = 2.4;
+    const maxStep = 1.8;
     const dense = [];
     for (let i = 0; i < rawPts.length - 1; i += 1) {
       const a = rawPts[i];
@@ -660,6 +660,9 @@ export class Erangel3DRenderer {
       map: activeTex,
       roughness: 0.92,
       metalness: 0.04,
+      polygonOffset: true,
+      polygonOffsetFactor: 2,
+      polygonOffsetUnits: 2,
     });
     this.terrainMesh = new THREE.Mesh(geo, mat);
     this.scene.add(this.terrainMesh);
@@ -770,7 +773,8 @@ export class Erangel3DRenderer {
       meshObj.visible = false;
       return;
     }
-    const segs = 160;
+    const radiusWorld = (radiusCm / sizeCm) * WORLD_SIZE;
+    const segs = Math.max(220, Math.min(480, Math.round(radiusWorld * 2.2)));
     const pts = [];
     for (let i = 0; i < segs; i += 1) {
       const theta = (i / segs) * Math.PI * 2;
@@ -843,10 +847,10 @@ export class Erangel3DRenderer {
       const zoneSig = `${Math.round(sx)},${Math.round(sy)},${Math.round(sr)},${Math.round(px)},${Math.round(py)},${Math.round(pr)}@${widthBucket}`;
       if (zoneSig !== this._lastZoneSig) {
         this._lastZoneSig = zoneSig;
-        // Sleek ~1.8px screen-space line matching the 2D blue/white zone rings
+        // Sleek ~1.8px screen-space line hugging terrain tightly like the 2D blue/white zone rings
         const zoneHW = Math.max(0.14, Math.min(0.85, worldPerPxAtTarget * 0.95));
-        this._updateZoneRingLine(this.safeWall, sx, sy, sr, sizeCm, 1.35, zoneHW);
-        this._updateZoneRingLine(this.blueWall, px, py, pr, sizeCm, 1.55, zoneHW * 1.12);
+        this._updateZoneRingLine(this.safeWall, sx, sy, sr, sizeCm, 0.28, zoneHW);
+        this._updateZoneRingLine(this.blueWall, px, py, pr, sizeCm, 0.36, zoneHW * 1.12);
       }
     }
 
@@ -861,7 +865,12 @@ export class Erangel3DRenderer {
       const pos = interpolateTrack(track, currentTime);
       if (!pos) continue;
       const rawPt = track[pos.idx] || track[0];
-      const zCm = rawPt.length >= 6 ? rawPt[5] : 0;
+      let zCm = rawPt.length >= 6 ? rawPt[5] : 0;
+      const nextPt = track[pos.idx + 1];
+      if (nextPt && nextPt.length >= 6 && nextPt[0] > rawPt[0]) {
+        const f = Math.max(0, Math.min(1, (currentTime - rawPt[0]) / (nextPt[0] - rawPt[0])));
+        zCm += (nextPt[5] - zCm) * f;
+      }
       const isDead = pos.state === 2;
       if (!isDead) aliveCount += 1;
 
@@ -883,7 +892,8 @@ export class Erangel3DRenderer {
         sprite.renderOrder = isHighlight ? 20 : 10;
       }
 
-      const wPos = this.worldTo3D(pos.x, pos.y, zCm);
+      // Anchor sprite center directly onto the player's true 3D ground coordinate (depthTest: false keeps it visible)
+      const wPos = this.worldTo3D(pos.x, pos.y, zCm, { allowAirborne: true, yBias: 0.35 });
       sprite.visible = !isDead || isHighlight;
       sprite.material.opacity = isDead ? 0.38 : 1.0;
 
@@ -893,9 +903,8 @@ export class Erangel3DRenderer {
       const worldPerPx = (2 * camDist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5))) / viewportH;
       const targetPx = compute3DIconPixelSize(camDist, p.is_squad, isTracked);
       const scaleSize = Math.max(1.2, Math.min(26, targetPx * worldPerPx));
-      const hoverY = Math.max(1.2, Math.min(6.0, scaleSize * 0.48));
 
-      sprite.position.set(wPos.x, wPos.y + hoverY, wPos.z);
+      sprite.position.copy(wPos);
       sprite.scale.set(scaleSize, scaleSize, 1);
 
       if (followId === p.account_id) {
@@ -932,7 +941,7 @@ export class Erangel3DRenderer {
 
         // Tiny per-player height stratification prevents z-fighting when squadmates ride in the same car
         const slotIdx = p.is_squad ? (Number(p.squad_slot || 1) - 1) : (4 + (layerIdx % 6));
-        const yBias = 1.05 + slotIdx * 0.12;
+        const yBias = 0.24 + slotIdx * 0.045;
         layerIdx += 1;
 
         const pts = this._buildTerrainConformingTrailPoints(track, currentTime, yBias);
@@ -974,8 +983,8 @@ export class Erangel3DRenderer {
     if (flashEvent && !activeEvs.includes(flashEvent)) activeEvs.push(flashEvent);
     const beamHW = Math.max(0.12, Math.min(0.65, worldPerPxAtTarget * 0.95));
     for (const ev of activeEvs) {
-      const a = this.worldTo3D(ev.ax || ev.vx, ev.ay || ev.vy, ev.az || 0, { yBias: 2.0 });
-      const v = this.worldTo3D(ev.vx || ev.ax, ev.vy || ev.ay, ev.vz || 0, { yBias: 2.0 });
+      const a = this.worldTo3D(ev.ax || ev.vx, ev.ay || ev.vy, ev.az || 0, { yBias: 0.65 });
+      const v = this.worldTo3D(ev.vx || ev.ax, ev.vy || ev.ay, ev.vz || 0, { yBias: 0.65 });
       const mid = a.clone().lerp(v, 0.5);
       mid.y += Math.min(7, a.distanceTo(v) * 0.07);
       const colorHex = ev.is_team_kill ? 0xef4444 : ev.type === "kill" ? 0xfacc15 : 0xfb923c;

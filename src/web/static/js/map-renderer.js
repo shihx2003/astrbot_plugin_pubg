@@ -9,7 +9,7 @@
  * - Mouse drag/wheel zoom & Mobile single-finger pan + two-finger pinch zoom
  */
 
-const MAP_ASSET_VER = "0.5.4";
+const MAP_ASSET_VER = "0.5.5";
 
 function withMapVer(url) {
   if (!url) return "";
