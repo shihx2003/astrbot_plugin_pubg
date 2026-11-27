@@ -10,6 +10,7 @@ from typing import Any
 
 from astrbot.api import logger
 
+from .maps import is_standard_br_match
 from .models import MatchSummary, SquadMember, slot_color
 from .pubg_client import PubgApiClient, PubgApiError
 from .storage import SquadStorage
@@ -28,6 +29,7 @@ class SquadLensService:
         default_platform: str = "steam",
         sample_interval_sec: float = 1.5,
         recent_matches_limit: int = 10,
+        exclude_non_br_matches: bool = True,
     ) -> None:
         self.client = client
         self.storage = storage
@@ -35,6 +37,7 @@ class SquadLensService:
         self.default_platform = default_platform.lower() or "steam"
         self.sample_interval_sec = max(0.5, float(sample_interval_sec))
         self.recent_matches_limit = max(1, int(recent_matches_limit))
+        self.exclude_non_br_matches = bool(exclude_non_br_matches)
         self._replay_locks: dict[str, asyncio.Lock] = {}
 
     def _get_replay_lock(self, match_id: str) -> asyncio.Lock:
@@ -135,8 +138,11 @@ class SquadLensService:
                 await self._get_or_fetch_match(platform, mid)
 
         account_ids = [m.account_id for m in active_members]
-        matches = await self.storage.get_recent_matches_for_accounts(account_ids, limit=target_limit)
-        return [self._apply_squad_labels(m) for m in matches]
+        fetch_limit = max(target_limit * 3, target_limit + 20) if self.exclude_non_br_matches else target_limit
+        matches = await self.storage.get_recent_matches_for_accounts(account_ids, limit=fetch_limit)
+        if self.exclude_non_br_matches:
+            matches = [m for m in matches if is_standard_br_match(m.map_name, m.game_mode)]
+        return [self._apply_squad_labels(m) for m in matches[:target_limit]]
 
     async def get_player_recent_matches(
         self,
@@ -165,11 +171,16 @@ class SquadLensService:
         if not any(m.ign.lower() == name.lower() for m in merged_members):
             merged_members.append(temp_member)
 
+        target_limit = max(1, int(limit))
+        scan_cap = min(20, max(target_limit * 2, target_limit + 5)) if self.exclude_non_br_matches else target_limit
         summaries: list[MatchSummary] = []
-        for mid in player_info.get("match_ids", [])[: max(1, int(limit))]:
+        for mid in player_info.get("match_ids", [])[:scan_cap]:
             cached = await self.storage.get_match(mid)
             if cached is not None and any(p.account_id == aid for p in cached.squad_players):
-                summaries.append(cached)
+                if not self.exclude_non_br_matches or is_standard_br_match(cached.map_name, cached.game_mode):
+                    summaries.append(cached)
+                    if len(summaries) >= target_limit:
+                        break
                 continue
             try:
                 raw = await self.client.fetch_match(plat, mid)
@@ -178,10 +189,13 @@ class SquadLensService:
                 continue
             summary, all_aids = parse_match_response(raw, plat, merged_members)
             await self.storage.save_match(summary, all_aids)
-            summaries.append(summary)
+            if not self.exclude_non_br_matches or is_standard_br_match(summary.map_name, summary.game_mode):
+                summaries.append(summary)
+                if len(summaries) >= target_limit:
+                    break
 
         summaries.sort(key=lambda m: m.created_at, reverse=True)
-        return {"account_id": aid, "name": name, "platform": plat}, summaries
+        return {"account_id": aid, "name": name, "platform": plat}, summaries[:target_limit]
 
     async def get_match_detail(self, match_id: str, platform: str | None = None) -> MatchSummary | None:
         """Retrieve a single match summary from SQLite cache or PUBG API."""
@@ -259,22 +273,36 @@ class SquadLensService:
         gz_bytes = await self.get_or_build_replay_gzip(match_id, platform=platform)
         return json.loads(gzip.decompress(gz_bytes).decode("utf-8"))
 
-    async def check_new_squad_match(self) -> MatchSummary | None:
-        """Poll for a newly finished squad match since the last stored watermark.
+    async def check_new_squad_matches(self) -> list[MatchSummary]:
+        """Poll for all newly finished standard-BR squad matches since the last stored watermark.
 
-        On first execution, records the latest match ID as watermark and returns None
-        so enabling auto-broadcast does not spam old historical matches.
+        Returns matches ordered oldest-to-newest so no chicken dinner is missed when
+        multiple matches finish within a single polling interval. On first execution,
+        records the latest match ID as watermark and returns [] to avoid spamming old games.
         """
-        matches = await self.get_squad_recent_matches(limit=3, force_refresh=True)
+        matches = await self.get_squad_recent_matches(limit=6, force_refresh=True)
+        matches = [m for m in matches if is_standard_br_match(m.map_name, m.game_mode)]
         if not matches:
-            return None
+            return []
         latest = matches[0]
         last_seen = await self.storage.get_state("last_broadcast_match_id")
         if not last_seen:
             await self.storage.set_state("last_broadcast_match_id", latest.match_id)
             logger.info("Initialized auto-broadcast watermark to match %s", latest.match_id)
-            return None
-        if latest.match_id != last_seen:
-            await self.storage.set_state("last_broadcast_match_id", latest.match_id)
-            return latest
-        return None
+            return []
+        if latest.match_id == last_seen:
+            return []
+
+        new_matches: list[MatchSummary] = []
+        for m in matches:
+            if m.match_id == last_seen:
+                break
+            new_matches.append(m)
+        await self.storage.set_state("last_broadcast_match_id", latest.match_id)
+        new_matches.reverse()
+        return new_matches
+
+    async def check_new_squad_match(self) -> MatchSummary | None:
+        """Backward-compatible helper returning the latest newly finished squad match."""
+        new_matches = await self.check_new_squad_matches()
+        return new_matches[-1] if new_matches else None

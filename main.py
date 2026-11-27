@@ -62,6 +62,8 @@ class SquadLensPlugin(Star):
         max_cached_replays = int(self._cfg("max_cached_replays", 200))
         sample_interval_sec = float(self._cfg("telemetry_sample_interval_sec", 1.5))
         recent_matches_limit = int(self._cfg("recent_matches_limit", 10))
+        exclude_non_br_matches = bool(self._cfg("exclude_non_br_matches", True))
+        broadcast_only_chicken = bool(self._cfg("broadcast_only_chicken", True))
 
         self._storage = SquadStorage(data_dir=data_dir, max_cached_replays=max_cached_replays)
         await self._storage.initialize()
@@ -74,6 +76,7 @@ class SquadLensPlugin(Star):
             default_platform=default_platform,
             sample_interval_sec=sample_interval_sec,
             recent_matches_limit=recent_matches_limit,
+            exclude_non_br_matches=exclude_non_br_matches,
         )
 
         enable_web = bool(self._cfg("enable_web", False))
@@ -104,9 +107,14 @@ class SquadLensPlugin(Star):
                 poll_interval_seconds=poll_interval,
                 enable_web=enable_web,
                 web_public_url=web_public_url,
+                broadcast_only_chicken=broadcast_only_chicken,
             )
             self._broadcaster.start()
-            logger.info("SquadLens auto-broadcast task started (interval=%ds).", poll_interval)
+            logger.info(
+                "SquadLens auto-broadcast task started (interval=%ds, only_chicken=%s).",
+                poll_interval,
+                broadcast_only_chicken,
+            )
 
         if enable_web:
             self._web_server = SquadWebServer(

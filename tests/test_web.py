@@ -120,12 +120,18 @@ async def test_web_auth_isolation_and_gzip_replay(tmp_path: Path) -> None:
             assert r_redir.status == 302
             assert r_redir.headers.get("Location") == "../?match=match-web-1"
 
-            # Static HTML uses strictly relative paths (FRP / Nginx subpath safe)
+            # Static HTML uses strictly relative paths and dynamically injects PLUGIN_VERSION from metadata.yaml
+            from src.web.routes import PLUGIN_VERSION
+
+            r_health_data = await r_health.json()
+            assert r_health_data["version"] == PLUGIN_VERSION
+
             r_index = await tc.get("/")
             assert r_index.status == 200
             html = await r_index.text()
-            assert "./static/css/style.css" in html
-            assert "./static/js/ui-mobile.js" in html
+            assert f"./static/css/style.css?v={PLUGIN_VERSION}" in html
+            assert f"./static/js/ui-mobile.js?v={PLUGIN_VERSION}" in html
+            assert "__SQUADLENS_VER__" not in html
             assert "127.0.0.1" not in html
     finally:
         await service.client.close()

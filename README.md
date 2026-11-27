@@ -9,7 +9,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.10.4-F5C518)
 ![Web](https://img.shields.io/badge/Frontend-Zero--Build%20HTML5%20%2B%20Three.js-2EA8FF)
-![Version](https://img.shields.io/badge/Version-v0.5.8-3CD070)
+![Version](https://img.shields.io/badge/Version-v0.5.9-3CD070)
 
 </div>
 
@@ -75,6 +75,8 @@
 | `default_platform` | string | `"steam"` | 默认查询平台（`steam`/`kakao`/`psn`/`xbox`/`stadia`） |
 | `squad_members` | template_list | 4 个成员槽位 | 固定小队成员（`ign`、`alias`、`platform`、`color`） |
 | `enable_auto_broadcast` | bool | `false` | 是否开启对局结束自动群播报 |
+| `broadcast_only_chicken` | bool | `true` | 仅在正式大逃杀吃鸡（第 1 名）时推送群喜报；关闭后每局都推 |
+| `exclude_non_br_matches` | bool | `true` | 排除训练场（Camp Jackal）、BinarySpot、TDM/街机等非大逃杀对局 |
 | `broadcast_targets` | list[string] | `[]` | 自动播报会话列表（推荐使用 `/pubg bind` 自动绑定） |
 | `poll_interval_seconds` | int | `180` | 后台轮询间隔（秒），建议 `>= 120` |
 | `enable_web` | bool | `false` | 是否启动内嵌 Web 战绩看板与战术回放服务 |

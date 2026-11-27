@@ -9,6 +9,7 @@ import hmac
 import io
 import json
 import mimetypes
+import re
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,25 @@ from ..core.pubg_client import PubgApiError
 from ..core.service import SquadLensService
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+METADATA_PATH = Path(__file__).resolve().parents[2] / "metadata.yaml"
 ACCESS_COOKIE_NAME = "squadlens_access_code"
+
+
+def _load_plugin_version() -> str:
+    """Read plugin version from metadata.yaml as single source of truth."""
+    try:
+        text = METADATA_PATH.read_text(encoding="utf-8")
+        m = re.search(r'^\s*version\s*:\s*["\']?([^"\'\r\n#]+)', text, flags=re.MULTILINE)
+        if m:
+            ver = m.group(1).strip()
+            if ver:
+                return ver
+    except OSError:
+        pass
+    return "dev"
+
+
+PLUGIN_VERSION = _load_plugin_version()
 
 
 def get_client_ip(request: web.Request) -> str:
@@ -150,11 +169,26 @@ def register_routes(
     if enable_3d_replay:
         (assets_3d_dir / "erangel").mkdir(parents=True, exist_ok=True)
 
+    index_html_cache: dict[str, tuple[int, str]] = {}
+
     async def index_handler(request: web.Request) -> web.StreamResponse:
         index_file = STATIC_DIR / "index.html"
         if not index_file.is_file():
             return web.Response(text="SquadLens static frontend missing.", status=404)
-        return web.FileResponse(index_file, headers={"Cache-Control": "no-store, must-revalidate"})
+        mtime = index_file.stat().st_mtime_ns
+        cached = index_html_cache.get("html")
+        if cached and cached[0] == mtime:
+            html = cached[1]
+        else:
+            raw_html = index_file.read_text(encoding="utf-8")
+            html = raw_html.replace("__SQUADLENS_VER__", PLUGIN_VERSION)
+            index_html_cache["html"] = (mtime, html)
+        return web.Response(
+            text=html,
+            content_type="text/html",
+            charset="utf-8",
+            headers={"Cache-Control": "no-store, must-revalidate"},
+        )
 
     # In-memory gzip cache for compressible static assets (.glb, .js, .css) keyed by (path, mtime_ns, size)
     static_gzip_cache: dict[tuple[str, int, int], bytes] = {}
@@ -247,7 +281,7 @@ def register_routes(
     async def health_handler(request: web.Request) -> web.Response:
         return _gzip_json_response(
             request,
-            {"ok": True, "service": "SquadLens", "version": "0.5.8"},
+            {"ok": True, "service": "SquadLens", "version": PLUGIN_VERSION},
         )
 
     async def auth_status_handler(request: web.Request) -> web.Response:

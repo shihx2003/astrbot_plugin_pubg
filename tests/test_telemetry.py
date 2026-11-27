@@ -5,17 +5,22 @@ from __future__ import annotations
 import gzip
 import json
 
+from pathlib import Path
+
 import pytest
 
 from src.bot.formatter import build_replay_url, format_help_message, format_match_detail
+from src.bot.handlers import AutoBroadcastCoordinator, BroadcastTargetStore
 from src.core.maps import (
     get_map_info,
+    is_standard_br_match,
     pubg_cm_to_norm,
     resolve_attachment_name,
     resolve_gear_slot_and_level,
     resolve_weapon_name,
 )
-from src.core.models import PUBG_SLOT_COLORS, SquadMember
+from src.core.models import MatchSummary, PUBG_SLOT_COLORS, SquadMember
+from src.core.storage import SquadStorage
 from src.core.telemetry import (
     REPLAY_SCHEMA_VERSION,
     STATE_DBNO,
@@ -410,3 +415,73 @@ async def test_telemetry_v2_gear_attachments_hitzones_and_clean_ground_trails() 
     assert "消音器" in detail["attachments"]
     assert detail["hit_zones"]["head"]["dmg"] == pytest.approx(72.0)
     assert detail["weapon_damage"] == pytest.approx(72.0)
+
+
+@pytest.mark.asyncio
+async def test_standard_br_filter_and_chicken_only_broadcast(tmp_path: Path) -> None:
+    # Standard BR matches pass
+    assert is_standard_br_match("Baltic_Main", "squad") is True
+    assert is_standard_br_match("Desert_Main", "squad-fpp") is True
+    assert is_standard_br_match("Tiger_Main", "normal-duo") is True
+    assert is_standard_br_match("Neon_Main", "esports-squad-fpp") is True
+
+    # Training ground, BinarySpot, TDM, Arcade/IBR/Lab are excluded
+    assert is_standard_br_match("Range_Main", "solo") is False
+    assert is_standard_br_match("Desert_Main_BinarySpot", "binaryspot") is False
+    assert is_standard_br_match("Baltic_Main", "tdm") is False
+    assert is_standard_br_match("Baltic_Main", "ibr") is False
+    assert is_standard_br_match("Kiki_Main", "bluebomb") is False
+    assert is_standard_br_match("Baltic_Main", "lab-tpp") is False
+
+    # AutoBroadcastCoordinator with broadcast_only_chicken=True only sends real BR chicken dinners
+    storage = SquadStorage(data_dir=tmp_path)
+    await storage.initialize()
+    try:
+        store = BroadcastTargetStore(storage, configured_targets=["group:1001"])
+        sent_messages: list[tuple[str, str]] = []
+
+        async def _send(umo: str, text: str) -> None:
+            sent_messages.append((umo, text))
+
+        def _mk(mid: str, mname: str, mode: str, rank: int, chicken: bool) -> MatchSummary:
+            return MatchSummary(
+                match_id=mid,
+                platform="steam",
+                map_name=mname,
+                map_display_name=mname,
+                map_image="static/maps/erangel.webp",
+                game_mode=mode,
+                game_mode_display=mode,
+                created_at="2026-11-27T12:00:00Z",
+                duration=1200,
+                telemetry_url="",
+                squad_win_place=rank,
+                squad_total_kills=8 if chicken else 1,
+                squad_total_damage=1200.0 if chicken else 200.0,
+                is_chicken_dinner=chicken,
+            )
+
+        class _FakeService:
+            async def check_new_squad_matches(self) -> list[MatchSummary]:
+                return [
+                    _mk("m-train", "Range_Main", "solo", 1, True),
+                    _mk("m-bspot", "Desert_Main_BinarySpot", "binaryspot", 1, True),
+                    _mk("m-chicken", "Baltic_Main", "squad", 1, True),
+                    _mk("m-rank6", "Baltic_Main", "squad", 6, False),
+                ]
+
+        coord = AutoBroadcastCoordinator(
+            service=_FakeService(),  # type: ignore[arg-type]
+            target_store=store,
+            send_text_fn=_send,
+            enable_web=True,
+            web_public_url="https://pubg.example.com",
+            broadcast_only_chicken=True,
+        )
+        sent = await coord.poll_once()
+        assert sent is not None and sent.match_id == "m-chicken"
+        assert len(sent_messages) == 1
+        assert "【PUBG 吃鸡喜报】" in sent_messages[0][1]
+        assert "/match/m-chicken" in sent_messages[0][1]
+    finally:
+        await storage.close()

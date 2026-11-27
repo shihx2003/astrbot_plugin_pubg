@@ -1,5 +1,14 @@
 # 更新日志
 
+## [0.5.9] - 2026-11-27
+
+### Changed
+- **群播报默认改为“仅吃鸡推送”并自动排除非正式大逃杀对局**：
+  - 新增 `broadcast_only_chicken` 配置项（默认 `true`），后台轮询支持扫描同一轮询周期内的全部新对局，仅在正式大逃杀对局取得第 1 名时向群聊发送 `【PUBG 吃鸡喜报】`（避免吃鸡后紧跟一把速成盒漏推，也避免刷屏）。
+  - 新增 `exclude_non_br_matches` 配置项（默认 `true`），自动过滤训练场（`Range_Main` / Camp Jackal）、`Desert_Main_BinarySpot`（`binaryspot`）、团队淘汰赛（`tdm`）、街机/激战/蓝圈突袭/实验室等非标准大逃杀模式，不再误显示为 `吃鸡 #1` 或触发推送。
+- **Web 端静态资源版本号改为单一事实来源（自动同步 `metadata.yaml`）**：
+  - 服务端启动时直接从 `metadata.yaml` 读取 `PLUGIN_VERSION`，自动注入到 `/api/health` 与 `index.html` 的 `window.__SQUADLENS_VER__` 及 CSS/JS/底图/3D 模型请求参数中；以后升级插件只需改 `metadata.yaml`，无需再手动修改任何 Web 端文件。
+
 ## [0.5.8] - 2026-11-27
 
 ### Changed

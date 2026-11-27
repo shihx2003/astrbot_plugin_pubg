@@ -78,6 +78,53 @@ _GAME_MODE_ZH: dict[str, str] = {
     "tdm": "团队淘汰赛",
 }
 
+# Standard Battle Royale game modes (excludes training, binaryspot, tdm, ibr, bluebomb, lab, war, zombie, etc.)
+STANDARD_BR_MODES: frozenset[str] = frozenset(
+    {
+        "solo",
+        "solo-fpp",
+        "duo",
+        "duo-fpp",
+        "squad",
+        "squad-fpp",
+        "normal-solo",
+        "normal-solo-fpp",
+        "normal-duo",
+        "normal-duo-fpp",
+        "normal-squad",
+        "normal-squad-fpp",
+        "esports-solo",
+        "esports-solo-fpp",
+        "esports-duo",
+        "esports-duo-fpp",
+        "esports-squad",
+        "esports-squad-fpp",
+    }
+)
+
+_NON_BR_MAP_TOKENS: tuple[str, ...] = (
+    "range_main",
+    "binaryspot",
+    "tutorial",
+    "training",
+    "arcade",
+    "tdm",
+    "boardwalk",
+    "pillar",
+    "arena",
+)
+
+
+def is_standard_br_match(map_name: str, game_mode: str) -> bool:
+    """Return True only for standard Battle Royale matches (excludes Training, BinarySpot, TDM, Arcade, etc.)."""
+    mode = (game_mode or "").strip().lower()
+    if mode not in STANDARD_BR_MODES:
+        return False
+    m_low = (map_name or "").strip().lower()
+    if not m_low:
+        return False
+    return not any(tok in m_low for tok in _NON_BR_MAP_TOKENS)
+
 # Friendly Chinese attachment labels matching PUBG CN UI
 _ATTACHMENT_ZH_RULES: tuple[tuple[str, str], ...] = (
     ("Scope15x", "15倍瞄准镜"),

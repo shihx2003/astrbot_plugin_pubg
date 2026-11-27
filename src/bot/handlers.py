@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 
 from astrbot.api import logger
 
+from ..core.maps import is_standard_br_match
 from ..core.models import MatchSummary
 from ..core.service import SquadLensService
 from ..core.storage import SquadStorage
@@ -76,6 +77,7 @@ class AutoBroadcastCoordinator:
         poll_interval_seconds: int = 180,
         enable_web: bool = False,
         web_public_url: str = "",
+        broadcast_only_chicken: bool = True,
     ) -> None:
         self._service = service
         self._target_store = target_store
@@ -83,6 +85,7 @@ class AutoBroadcastCoordinator:
         self._interval = max(60, int(poll_interval_seconds))
         self._enable_web = enable_web
         self._web_public_url = web_public_url
+        self._broadcast_only_chicken = bool(broadcast_only_chicken)
         self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
@@ -117,19 +120,39 @@ class AutoBroadcastCoordinator:
         targets = await self._target_store.get_all_targets()
         if not targets:
             return None
-        new_match = await self._service.check_new_squad_match()
-        if new_match is None:
+        new_matches = await self._service.check_new_squad_matches()
+        if not new_matches:
             return None
 
-        text = format_match_detail(
-            new_match,
-            web_public_url=self._web_public_url,
-            enable_web=self._enable_web,
-            title_prefix="【PUBG 刚打完一局】",
-        )
-        for umo in targets:
-            try:
-                await self._send_text(umo, text)
-            except Exception as exc:
-                logger.warning("Failed to broadcast match %s to %s: %s", new_match.match_id, umo, exc)
-        return new_match
+        last_sent: MatchSummary | None = None
+        for match in new_matches:
+            if not is_standard_br_match(match.map_name, match.game_mode):
+                logger.info(
+                    "Skipping non-BR match %s (%s / %s) from auto-broadcast.",
+                    match.match_id,
+                    match.map_name,
+                    match.game_mode,
+                )
+                continue
+            if self._broadcast_only_chicken and not match.is_chicken_dinner:
+                logger.info(
+                    "Skipping non-chicken match %s (rank=#%d) due to broadcast_only_chicken=True.",
+                    match.match_id,
+                    match.squad_win_place,
+                )
+                continue
+
+            prefix = "【PUBG 吃鸡喜报】" if match.is_chicken_dinner else "【PUBG 刚打完一局】"
+            text = format_match_detail(
+                match,
+                web_public_url=self._web_public_url,
+                enable_web=self._enable_web,
+                title_prefix=prefix,
+            )
+            for umo in targets:
+                try:
+                    await self._send_text(umo, text)
+                except Exception as exc:
+                    logger.warning("Failed to broadcast match %s to %s: %s", match.match_id, umo, exc)
+            last_sent = match
+        return last_sent

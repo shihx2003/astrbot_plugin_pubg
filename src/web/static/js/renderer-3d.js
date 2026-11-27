@@ -19,11 +19,14 @@ const WORLD_SIZE = 800; // Maps 816,000 cm -> 800 Three.js units (1 unit = 10.2m
 const TERRAIN_SEGMENTS = 320;
 const TERRAIN_MAX_HEIGHT = 46; // Visual elevation scale in Three.js units (clear dramatic hills)
 const SEA_LEVEL_Y = 3.2;
-const ASSET_VER = "0.5.8";
+function getAssetVer() {
+  return (typeof window !== "undefined" && window.__SQUADLENS_VER__) || "dev";
+}
 
 function withAssetVer(url) {
   if (!url) return "";
-  return url.includes("?") ? `${url}&v=${ASSET_VER}` : `${url}?v=${ASSET_VER}`;
+  const v = encodeURIComponent(getAssetVer());
+  return url.includes("?") ? `${url}&v=${v}` : `${url}?v=${v}`;
 }
 
 /**

@@ -97,8 +97,20 @@
   "enable_auto_broadcast": {
     "type": "bool",
     "description": "开启对局结束自动群播报",
-    "hint": "开启后将按设定间隔低频轮询小队最新对局，检测到打完新的一局时自动向已绑定群聊推送战报。",
+    "hint": "开启后将按设定间隔低频轮询小队最新对局，默认仅在正式大逃杀吃鸡时自动向已绑定群聊推送战报。",
     "default": false
+  },
+  "broadcast_only_chicken": {
+    "type": "bool",
+    "description": "仅在吃鸡（第 1 名）时触发群自动播报",
+    "hint": "默认开启：只有标准大逃杀对局吃鸡时才会在群内自动推送喜报；关闭后每打完一局正式对局都会推送。",
+    "default": true
+  },
+  "exclude_non_br_matches": {
+    "type": "bool",
+    "description": "排除训练场与非大逃杀模式对局",
+    "hint": "默认开启：自动过滤训练场（Camp Jackal）、BinarySpot、团队淘汰赛（TDM）、街机/实验室/激战等非标准大逃杀对局，避免误显示吃鸡与触发推送。",
+    "default": true
   },
   "broadcast_targets": {
     "type": "list",

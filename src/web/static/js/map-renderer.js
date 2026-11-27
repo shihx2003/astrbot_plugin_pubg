@@ -9,11 +9,14 @@
  * - Mouse drag/wheel zoom & Mobile single-finger pan + two-finger pinch zoom
  */
 
-const MAP_ASSET_VER = "0.5.8";
+function getMapAssetVer() {
+  return (typeof window !== "undefined" && window.__SQUADLENS_VER__) || "dev";
+}
 
 function withMapVer(url) {
   if (!url) return "";
-  return url.includes("?") ? `${url}&v=${MAP_ASSET_VER}` : `${url}?v=${MAP_ASSET_VER}`;
+  const v = encodeURIComponent(getMapAssetVer());
+  return url.includes("?") ? `${url}&v=${v}` : `${url}?v=${v}`;
 }
 
 /**
