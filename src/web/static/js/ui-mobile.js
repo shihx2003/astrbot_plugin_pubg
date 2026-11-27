@@ -1512,7 +1512,7 @@ function bindUIEvents() {
         ? "正在加载艾伦格 3D 地形与建筑白模..."
         : "正在初始化艾伦格 3D 立体地形回放...";
       try {
-        const mod = await import("./renderer-3d.js?v=0.5.7");
+        const mod = await import("./renderer-3d.js?v=0.5.8");
         const r3d = new mod.Erangel3DRenderer($("replay-3d-host"), (aid) => controller.toggleTrack(aid));
         r3d.setOnUserInteract(() => {
           if (controller.followId) controller.setFollow(null);

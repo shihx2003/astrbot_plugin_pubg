@@ -247,7 +247,7 @@ def register_routes(
     async def health_handler(request: web.Request) -> web.Response:
         return _gzip_json_response(
             request,
-            {"ok": True, "service": "SquadLens", "version": "0.5.7"},
+            {"ok": True, "service": "SquadLens", "version": "0.5.8"},
         )
 
     async def auth_status_handler(request: web.Request) -> web.Response:
